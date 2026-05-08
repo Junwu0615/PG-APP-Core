@@ -1,0 +1,35 @@
+database:
+#  host: localhost # Windows 會先嘗試透過 IPv6 的 ::1 連線，如果失敗（或 Docker 沒監聽 IPv6），它會等到逾時後才降級回 IPv4 的 127.0.0.1。
+  host: 127.0.0.1 # 使用 IPv4 的 loopback 地址，避免 IPv6 連線問題
+  database: pgdatabase
+  user: oltp_user # 設定針對'交易事務'的用戶
+  password: oltp_pwd
+
+init_data:
+  products: 8 # 建立已知訂單訊息
+  machine_layout: # 建立已知機台訊息
+    L1: ["CNC","CNC","DRILL","LATHE","CNC","LATHE"]
+    L2: ["CNC","DRILL","DRILL","LATHE","LATHE","CNC"]
+    L3: ["CNC","CNC","CNC","DRILL","LATHE","LATHE"]
+
+simulate:
+  batch_size: 500 # commit = WAL flush，若太頻繁 IO latency ↑
+
+  orders: 50 # 第一批生產訂單數量
+
+  target_qty_min: 300 # 目標生産数の最小値
+  target_qty_max: 1500 # 目標生産数の最大値
+
+  prod_qty_min: 1 # 實際生產效率の最小値
+  prod_qty_max: 10 # 實際生產效率の最大値
+
+load_profile:
+  OFF_PEAK:
+    efficiency: 2 # 效率加成 ( 增加數據筆數  )
+    prob: 0.005 # 訂單生成機率
+  NORMAL:
+    efficiency: 5
+    prob: 0.01
+  PEAK:
+    efficiency: 10
+    prob: 0.1

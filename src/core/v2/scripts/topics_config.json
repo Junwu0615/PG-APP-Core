@@ -1,0 +1,44 @@
+{
+  "topics": [
+    {
+      "name": "inst.status-logs",
+      "partitions": 3,
+      "replication_factor": 1,
+      "configs": {
+        "compression.type": "lz4",
+        "retention.ms": "604800000",
+        "cleanup.policy": "delete"
+      }
+    },
+    {
+      "name": "inst.prod-records",
+      "partitions": 12,
+      "replication_factor": 1,
+      "configs": {
+        "compression.type": "lz4",
+        "retention.ms": "604800000",
+        "cleanup.policy": "delete"
+      }
+    },
+    {
+      "name": "inst.prod-orders",
+      "partitions": 3,
+      "replication_factor": 1,
+      "configs": {
+        "compression.type": "lz4",
+        "retention.ms": "604800000",
+        "cleanup.policy": "delete"
+      }
+    },
+    {
+      "name": "source.cp.mach-order",
+      "partitions": 72,
+      "replication_factor": 1,
+      "configs": {
+        "compression.type": "lz4",
+        "retention.ms": "604800000",
+        "cleanup.policy": "delete"
+      }
+    }
+  ]
+}
