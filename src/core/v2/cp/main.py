@@ -53,7 +53,7 @@ class Application(EntryPoint):
             # file_path=f'logs/CP/main.logs',
             backup_count=10,
             **{
-                'app_name': 'ooud',
+                'app_name': 'pg',
                 'service_type': 'command platform',
             }
         )

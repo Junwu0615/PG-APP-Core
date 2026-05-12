@@ -63,7 +63,7 @@ class Application(EntryPoint):
             # file_path=f'logs/INSTANCE/{self.mach_name}.logs',
             backup_count=10,
             **{
-                'app_name': 'ooud',
+                'app_name': 'pg',
                 'service_type': 'instance',
                 'inst_id': self.mach_name,
             }
