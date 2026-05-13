@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 TODO
-    Update Date: 2026-05-06
+    Update Date: 2026-05-14
     Description:
     Notice:
         [加入 sqlite 提升 HA 消費訂單事務]:
-            - [thread 1] kafka -> consumer -> sqlite ( N 個實例 = N 個 sqlite 實例 ; 用 ELK 監控是否正常消費 )
+            - [thread 1] kafka -> consumer -> sqlite ( N 個實例 = N 個 sqlite 實例 ; 用 Loki 監控是否正常消費 )
             - [thread 2] sqlite ( 每次斷掉重啟由此開始 唯一事實 ; 須建立狀態表 ) -> producer -> kafka -> kafka connection sink
 """
 import sys, os; sys.path.insert(0, os.getcwd())
@@ -280,9 +280,7 @@ class Application(EntryPoint):
 
 
     def _update_order_status(self, **kwargs) -> int:
-        """
-        TODO 檢查是否有訂單完成，若完成則更新訂單狀態並從訂單列表移除
-        """
+        """檢查是否有訂單完成，若完成則更新訂單狀態並從訂單列表移除"""
         ret, _payload = 0, None
         try:
             # 1.1 插入交易日誌 (基本)
@@ -324,7 +322,7 @@ class Application(EntryPoint):
                 self._mark_order_done()
 
                 self.logging.notice(f'[order_id={self.order_id}] have been completed. '
-                f'( produced_qty: {detail['produced_qty']} >= target_qty: {detail['target_qty']} )')
+                f'( produced_qty: {self.event_dict['produced_qty']} >= target_qty: {self.event_dict['target_qty']} )')
 
         finally:
             self.kpm.send_message(topic='inst.prod-records', key=self.mach_name, payload=_payload)
@@ -390,6 +388,7 @@ class Application(EntryPoint):
 
 
     def _order_start(self) -> int:
+        """訂單初始狀態賦予"""
         ret = 0
         _now_time = get_now(hours=8, tzinfo=TZ_UTC_8)
         timestamp_ms = int(_now_time.timestamp() * 1000)
@@ -426,9 +425,7 @@ class Application(EntryPoint):
 
 
     def _producer_message(self, **kwargs):
-        """
-        TODO 生產者配置
-        """
+        """生產者配置"""
         batch_ct = 0
         last_commit_time = time.time()
         try:
@@ -459,7 +456,7 @@ class Application(EntryPoint):
                     if self.event_dict != {}:
                         batch_ct += self._insert_production_record(load_setting['efficiency'])
 
-                    # TODO 根據 BATCH_SIZE 或 時間間隔 提交事務
+                    # 根據 BATCH_SIZE 或 時間間隔 提交事務
                     if batch_ct >= self.env['BATCH_SIZE'] \
                             or (time.time() - last_commit_time) > self.env['BATCH_INTERVAL']:
                         self.kpm.poll(0)
@@ -469,7 +466,8 @@ class Application(EntryPoint):
                     ret = ''
                     if self.event_dict != {}:
                         ret += f'{self.event_dict['produced_qty']}/{self.event_dict['target_qty']}'
-                    # TODO 輸出當前模擬狀態
+
+                    # 輸出當前模擬狀態
                     self.logging.info(
                         f'[{self.env['_MAIN_NAME']}] 整體の概要 : '
                         f'MODE={mode} | '
@@ -490,9 +488,7 @@ class Application(EntryPoint):
 
 
     def _consumer_message(self, **kwargs):
-        """
-        TODO 消費者配置
-        """
+        """消費者配置"""
         try:
             while not self._stop_event.is_set():
                 try:
