@@ -47,12 +47,18 @@ class Application(EntryPoint):
         _BATCH_SIZE = _SIMULATE['batch_size']
         _BATCH_INTERVAL = _SIMULATE['batch_interval']
 
-        _SQLITE_DB_NAME = os.getenv('SQLITE_DB_NAME', 'kafka_tmp_data.db')
+        _SQLITE_DB_NAME = os.getenv('SQLITE_DB_NAME', 'kafka_consumer_local.db')
         self.mach_id = int(os.getenv('MACH_ID', '67'))
         self.mach_name = os.getenv('MACH_NAME', 'M-CNC-30')
+
         self.status = 'IDLE'
+        self.last_status = None
         self.order_id = None
         self.raw_data = None
+
+        # 訂單處理狀態字典 ; value (product_id, target_qty, produced_qty, start_at, end_at)
+        self.event_dict = {}
+
         _MAIN_NAME = f'#{self.mach_name}'
 
         self.env['CONSUMER_ORDER_TOPIC'] = _CONSUMER_ORDER_TOPIC
@@ -86,9 +92,8 @@ class Application(EntryPoint):
     
     def _load_configs(self):
         self._init_sqlite()
-
-        # 訂單處理狀態字典 ; value (product_id, target_qty, produced_qty, start_at, end_at)
-        self.event_dict = {}
+        self._cleanup_data()
+        self._recover_stuck_orders()
 
         self.mss = MachineStatusSimulator()
         self.kcm = KafkaConsumerManager(
@@ -187,15 +192,33 @@ class Application(EntryPoint):
             return False
 
 
+    def _recover_stuck_orders(self):
+        """將上次執行到一半 (status=1) 的訂單恢復為待處理 (status=0)"""
+        try:
+            with self.conn:
+                self.cursor.execute("""
+                    UPDATE sync_orders 
+                    SET status=0, update_at=DATETIME('now', 'localtime')
+                    WHERE status=1
+                """)
+                if self.cursor.rowcount > 0:
+                    self.logging.info(f'已將 {self.cursor.rowcount} 筆處理中的訂單重置為待處理狀態')
+
+        except Exception as e:
+            self.logging.error('修復殘留訂單失敗', exc_info=True)
+
+
     def _get_next_pending_order(self):
         """
-        取出排隊順位第一個訂單，並立即標記為處理中 (status=1)。
-        採用原子操作，確保不會有兩個人同時抓到同一張單。
+        1. 優先查詢 status=0 的訂單 => 取出排隊順位第一個訂單，並立即標記為處理中 (status=1)
+            # 如果系統健壯，status=1 應該在程式運行時被即時轉換為 2
+            # 若程式重啟，status=1 應已透過 _recover_stuck_orders 轉為 0
+        2. 採用原子操作，確保不會有同時抓到同一張單
+        3. SQL 語句
+            # 找到 order_id 最小的待處理訂單(Subquery)
+            # 將其狀態改為 1
+            # 回傳該筆的所有欄位內容
         """
-        # 這裡的邏輯：
-        # 1. 找到 order_id 最小的待處理訂單(Subquery)
-        # 2. 將其狀態改為 1
-        # 3. 回傳該筆的所有欄位內容
         sql = """
             UPDATE sync_orders
             SET status=1, update_at=DATETIME('now', 'localtime')
@@ -243,7 +266,7 @@ class Application(EntryPoint):
             self.logging.error('更新狀態失敗', exc_info=True)
 
 
-    def _cleanup_old_data(self):
+    def _cleanup_data(self):
         """刪除 7 天前已完成的訂單，保持資料庫輕量"""
         try:
             with self.conn:
@@ -260,12 +283,12 @@ class Application(EntryPoint):
         """
         TODO 檢查是否有訂單完成，若完成則更新訂單狀態並從訂單列表移除
         """
-        ret, payload = 0, None
+        ret, _payload = 0, None
         try:
             # 1.1 插入交易日誌 (基本)
             _now_time = get_now(hours=8, tzinfo=TZ_UTC_8)
             timestamp_ms = int(_now_time.timestamp() * 1000)
-            payload = {
+            _payload = {
                 'order_id': self.order_id,
                 'machine_id': self.mach_id,
                 'product_id': self.raw_data['prod_id'],
@@ -275,7 +298,7 @@ class Application(EntryPoint):
 
             if self.event_dict['produced_qty'] >= self.event_dict['target_qty']:
                 # 1.2 校正最大數量值
-                payload['quantity'] = self.event_dict['target_qty']
+                _payload['quantity'] = self.event_dict['target_qty']
                 self.event_dict['end_at'] = timestamp_ms
 
                 # 2. 更新訂單結束時間
@@ -304,7 +327,7 @@ class Application(EntryPoint):
                 f'( produced_qty: {detail['produced_qty']} >= target_qty: {detail['target_qty']} )')
 
         finally:
-            self.kpm.send_message(topic='inst.prod-records', key=self.mach_name, payload=payload)
+            self.kpm.send_message(topic='inst.prod-records', key=self.mach_name, payload=_payload)
             ret += 1
             return ret
 
@@ -341,21 +364,20 @@ class Application(EntryPoint):
             - RUNNING     # 3 # process: [3 -> 2], [3 -> 4]
             - ALARM       # 4 # process: [4 -> 3]
         """
-        # 1. 直接返回且不更新狀態
-        if self.status is None:
-            return 0
+        if self.last_status is not None:
+            # 1. 實施隨機邏輯
+            _status = self.mss.get_next_status(self.status)
 
-        # 2. 實施隨機邏輯
-        _status = self.mss.get_next_status(self.status)
+            # 2. 直接返回且不更新狀態
+            if self.status == _status:
+                return 0
+            else:
+                # 3. 更新當前狀態
+                self.status = _status
 
-        # 3. 直接返回且不更新狀態
-        if self.status == _status:
-            return 0
-        else:
-            # 4. 更新當前狀態
-            self.status = _status
+        self.last_status = self.status
 
-        # 5. 提交狀態更新
+        # 4. 提交狀態更新
         _now_time = get_now(hours=8, tzinfo=TZ_UTC_8)
         timestamp_ms = int(_now_time.timestamp() * 1000)
         payload = {
@@ -368,7 +390,6 @@ class Application(EntryPoint):
 
 
     def _order_start(self) -> int:
-        """FIXME 更新訂單開始作業時間 + 初始化暫存表 ( 若中途斷掉 進度則缺失 [僅該筆] )"""
         ret = 0
         _now_time = get_now(hours=8, tzinfo=TZ_UTC_8)
         timestamp_ms = int(_now_time.timestamp() * 1000)
@@ -417,6 +438,9 @@ class Application(EntryPoint):
                     mode = self.mss.get_load_profile(now.hour)
                     load_setting = self.env['LOAD_CFG'][mode]
 
+                    # TODO 隨機更新指定狀態
+                    batch_ct += self._insert_machine_status()
+
                     # TODO 從資料庫拿取「下一張待處理訂單」
                     if self.order_id is None and self.raw_data is None:
                         current_task = self._get_next_pending_order()
@@ -431,14 +455,9 @@ class Application(EntryPoint):
                             self.raw_data = current_task['raw_data']
                             batch_ct += self._order_start()
 
-
                     # TODO 進行判斷狀態更新 + 同時檢查是否完成訂單
                     if self.event_dict != {}:
                         batch_ct += self._insert_production_record(load_setting['efficiency'])
-
-                    # TODO 隨機更新指定狀態
-                    batch_ct += self._insert_machine_status()
-
 
                     # TODO 根據 BATCH_SIZE 或 時間間隔 提交事務
                     if batch_ct >= self.env['BATCH_SIZE'] \
@@ -447,13 +466,14 @@ class Application(EntryPoint):
                         batch_ct = 0
                         last_commit_time = time.time()
 
-
+                    ret = ''
+                    if self.event_dict != {}:
+                        ret += f'{self.event_dict['produced_qty']}/{self.event_dict['target_qty']}'
                     # TODO 輸出當前模擬狀態
                     self.logging.info(
                         f'[{self.env['_MAIN_NAME']}] 整體の概要 : '
                         f'MODE={mode} | '
-                        f'[PROGRESS #{self.order_id}]='
-                        f'[{self.event_dict['produced_qty']}/{self.event_dict['target_qty']}] | '
+                        f'[PROGRESS #{self.order_id}]=[{ret}] | '
                         f'BATCH=[{batch_ct}/{self.env['BATCH_SIZE']}] | '
                         f'機台の狀態 : {self.status}\n'
                     )

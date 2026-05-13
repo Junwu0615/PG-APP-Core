@@ -6,8 +6,8 @@ init_data:
     L3: ["CNC","CNC","CNC","DRILL","LATHE","LATHE"]
 
 simulate:
-  batch_size: 100 # 500 # commit = WAL flush，若太頻繁 IO latency ↑
-  batch_interval: 10 # 30
+  batch_size: 500 # 500 # commit = WAL flush，若太頻繁 IO latency ↑
+  batch_interval: 20 # 30
 
   orders: 10 # 第一批生產訂單數量
 
