@@ -48,7 +48,7 @@ class Application(EntryPoint):
         _BATCH_INTERVAL = _SIMULATE['batch_interval']
 
         _SQLITE_DB_NAME = os.getenv('SQLITE_DB_NAME', 'kafka_tmp_data.db')
-        self.mach_id = os.getenv('MACH_ID', '67')
+        self.mach_id = int(os.getenv('MACH_ID', '67'))
         self.mach_name = os.getenv('MACH_NAME', 'M-CNC-30')
         self.status = 'IDLE'
         self.order_id = None
@@ -375,8 +375,8 @@ class Application(EntryPoint):
 
         self.status = 'RUNNING'
         self.event_dict = {
-            'product_id': _data['prod_id'],
-            'target_qty': _data['target_qty'],
+            'product_id': self.raw_data['prod_id'],
+            'target_qty': self.raw_data['target_qty'],
             'produced_qty': 0,
             'start_at': timestamp_ms,
             'end_at': None,
@@ -433,7 +433,8 @@ class Application(EntryPoint):
 
 
                     # TODO 進行判斷狀態更新 + 同時檢查是否完成訂單
-                    batch_ct += self._insert_production_record(load_setting['efficiency'])
+                    if self.event_dict != {}:
+                        batch_ct += self._insert_production_record(load_setting['efficiency'])
 
                     # TODO 隨機更新指定狀態
                     batch_ct += self._insert_machine_status()
