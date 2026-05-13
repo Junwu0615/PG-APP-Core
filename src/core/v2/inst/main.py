@@ -19,6 +19,7 @@ from shared.configs import (
 )
 from shared.configs.constant import *
 from shared.utils.tools import *
+from shared.utils.postgres_tools import close_conn
 from shared.utils.env_config import GET_PATH_ROOT, get_logger_name
 from shared.modules.log import Logger
 from shared.modules.entry import EntryPoint
@@ -49,8 +50,9 @@ class Application(EntryPoint):
         _SQLITE_DB_NAME = os.getenv('SQLITE_DB_NAME', 'kafka_tmp_data.db')
         self.mach_id = os.getenv('MACH_ID', '67')
         self.mach_name = os.getenv('MACH_NAME', 'M-CNC-30')
+        self.status = 'IDLE'
         self.order_id = None
-        self.current_task = {}
+        self.raw_data = None
         _MAIN_NAME = f'#{self.mach_name}'
 
         self.env['CONSUMER_ORDER_TOPIC'] = _CONSUMER_ORDER_TOPIC
@@ -85,14 +87,8 @@ class Application(EntryPoint):
     def _load_configs(self):
         self._init_sqlite()
 
-        self.event_dict = {
-            'detail': {},  # 訂單詳情字典 | key: order_id, value: dict (product_id, target_qty, produced_qty)
-            # 記錄機台持單狀態
-            'machine_status': {
-                'status': 'IDLE',
-                'order_id': None,  # None / not None
-            },
-        }
+        # 訂單處理狀態字典 ; value (product_id, target_qty, produced_qty, start_at, end_at)
+        self.event_dict = {}
 
         self.mss = MachineStatusSimulator()
         self.kcm = KafkaConsumerManager(
@@ -117,9 +113,7 @@ class Application(EntryPoint):
 
 
     def _init_sqlite(self):
-        """
-        初始化資料庫連線與建表邏輯
-        """
+        """初始化資料庫連線 ( +運行參數設置 ) 與建表邏輯"""
         try:
             self.conn = sqlite3.connect(self.env['SQLITE_DB_NAME'], check_same_thread=False)
 
@@ -148,8 +142,8 @@ class Application(EntryPoint):
                 order_id INTEGER PRIMARY KEY,        -- 訂單唯一性，防止重複消費
                 raw_data JSON,                       -- 完整原始數據
                 status INTEGER DEFAULT 0,            -- 0:待處理, 1:處理中, 2:已完成
-                create_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                update_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                create_at DATETIME DEFAULT (DATETIME('now', 'localtime')),
+                update_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
             );
             
             -- 索引： Thread 查詢「待處理」訂單時速度會極快
@@ -169,11 +163,10 @@ class Application(EntryPoint):
             sql = """
             INSERT INTO sync_orders 
             (order_id, raw_data, update_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, DATETIME('now', 'localtime'))
             ON CONFLICT(order_id) DO UPDATE SET
-            target_qty = excluded.target_qty,
             raw_data = excluded.raw_data,
-            update_at = CURRENT_TIMESTAMP
+            update_at = DATETIME('now', 'localtime')
             """
             params = (data['order_id'], json.dumps(data))
 
@@ -190,7 +183,7 @@ class Application(EntryPoint):
 
         except Exception as e:
             self.conn.rollback()
-            self.logging.error('Database Error', exc_info=True)
+            self.logging.error('儲存 Consumer 訂單失敗', exc_info=True)
             return False
 
 
@@ -200,15 +193,15 @@ class Application(EntryPoint):
         採用原子操作，確保不會有兩個人同時抓到同一張單。
         """
         # 這裡的邏輯：
-        # 1. 找到 order_id 最小的待處理訂單 (Subquery)
+        # 1. 找到 order_id 最小的待處理訂單(Subquery)
         # 2. 將其狀態改為 1
         # 3. 回傳該筆的所有欄位內容
         sql = """
             UPDATE sync_orders
-            SET status=1, update_at=CURRENT_TIMESTAMP
+            SET status=1, update_at=DATETIME('now', 'localtime')
             WHERE order_id = (
                 SELECT order_id FROM sync_orders 
-                WHERE status = 0 
+                WHERE status=0 
                 ORDER BY order_id ASC 
                 LIMIT 1
             )
@@ -231,17 +224,20 @@ class Application(EntryPoint):
             return None
 
 
-    def _mark_order_done(self, order_id):
+    def _mark_order_done(self):
         """完成訂單並標記狀態"""
         try:
             with self.conn:
                 self.cursor.execute("""
                     UPDATE sync_orders 
-                    SET status=2, update_at=CURRENT_TIMESTAMP
+                    SET status=2, update_at=DATETIME('now', 'localtime')
                     WHERE order_id = ?
-                """, (order_id,))
+                """, (self.order_id,))
 
-            self.current_task = {} # 清除訂單
+            # 清除當前訂單相關變數
+            self.order_id = None
+            self.raw_data = None
+            self.event_dict = {}
 
         except Exception as e:
             self.logging.error('更新狀態失敗', exc_info=True)
@@ -260,146 +256,79 @@ class Application(EntryPoint):
             self.logging.error('清除失敗', exc_info=True)
 
 
-    def _update_order_status(self, _quantity, **kwargs) -> int:
+    def _update_order_status(self, **kwargs) -> int:
         """
         TODO 檢查是否有訂單完成，若完成則更新訂單狀態並從訂單列表移除
         """
-        ret = 0
+        ret, payload = 0, None
         try:
-            detail = self.event_dict['detail'][self.order_id]
-            if detail['produced_qty'] >= detail['target_qty']:
-                _now_time = get_now(hours=8, tzinfo=TZ_UTC_8)
-                timestamp_ms = int(_now_time.timestamp() * 1000)
-                self.event_dict['detail'][self.order_id]['end_at'] = timestamp_ms
+            # 1.1 插入交易日誌 (基本)
+            _now_time = get_now(hours=8, tzinfo=TZ_UTC_8)
+            timestamp_ms = int(_now_time.timestamp() * 1000)
+            payload = {
+                'order_id': self.order_id,
+                'machine_id': self.mach_id,
+                'product_id': self.raw_data['prod_id'],
+                'quantity': self.event_dict['produced_qty'],
+                'event_time': timestamp_ms,
+            }
 
-                # 1. 更新訂單結束時間
+            if self.event_dict['produced_qty'] >= self.event_dict['target_qty']:
+                # 1.2 校正最大數量值
+                payload['quantity'] = self.event_dict['target_qty']
+                self.event_dict['end_at'] = timestamp_ms
+
+                # 2. 更新訂單結束時間
                 payload = {
                     'order_id': self.order_id,
-                    'start_at': self.event_dict['detail'][self.order_id]['start_at'],
-                    'end_at': self.event_dict['detail'][self.order_id]['end_at'],
+                    'start_at': self.event_dict['start_at'],
+                    'end_at': self.event_dict['end_at'],
                 }
                 self.kpm.send_message(topic='inst.prod-orders', key=self.mach_name, payload=payload)
-
                 ret += 1
 
-                # 2. 更新機台狀態 : RUNNING -> IDLE
-                _status = 'IDLE'
+                # 3. 更新機台狀態 : RUNNING -> IDLE
+                self.status = 'IDLE'
                 payload = {
                     'machine_id': self.mach_id,
-                    'status': _status,
-                    'event_time': timestamp_ms,
+                    'status': self.status,
+                    'event_time': self.event_dict['end_at'],
                 }
                 self.kpm.send_message(topic='inst.status-logs', key=self.mach_name, payload=payload)
-
                 ret += 1
 
-                # 從訂單字典移除
-                del self.event_dict['order_dict'][self.order_id]
-
-                # 同時移除訂單詳情
-                del self.event_dict['detail'][self.order_id]
-
-                # 清空機台持單狀態 + 狀態轉 IDLE
-                self.event_dict['machine_status'] = {
-                    'status': 'IDLE',
-                    'order_id': None,
-                }
-
                 # TODO 處理完成，標記為已完成 (status=2)
-                self._mark_order_done(current_task['order_id'])
+                self._mark_order_done()
 
                 self.logging.notice(f'[order_id={self.order_id}] have been completed. '
                 f'( produced_qty: {detail['produced_qty']} >= target_qty: {detail['target_qty']} )')
 
         finally:
-            if ret > 0:
-                return ret, 1
-            else:
-                return ret, 0
+            self.kpm.send_message(topic='inst.prod-records', key=self.mach_name, payload=payload)
+            ret += 1
+            return ret
 
 
     def _insert_production_record(self, efficiency: int, **kwargs) -> int:
-        """
-        TODO 插入實時生產記錄
-            - 狀況 1 : 第一次生產匹配
-            - 狀況 2 : 持續生產
-        """
-        ret, _status = 1, None
+        """插入實時生產記錄"""
+        ret = 1
 
-        # 1. 從指定機型佇列中取出第一順位訂單 (而非隨機挑選) ; 或是持續生產
-        # FIXME order_queue
-        if self.event_dict['order_queue'] and self.event_dict['machine_status']['status'] == 'IDLE':
-            # 須確認是否已經訂單在身，若無取新訂單
-            _data = self.event_dict['order_queue'].popleft()
-            self.order_id = _data['order_id']
-            _status = 'RUNNING'
-            self.event_dict['machine_status']['status'] = _status
-            self.event_dict['machine_status']['order_id'] = self.order_id
-            self.event_dict['detail'][_data['order_id']] = {
-                'product_id': _data['prod_id'],
-                'target_qty': _data['target_qty'],
-                'produced_qty': 0
-            }
-
-            _now_time = get_now(hours=8, tzinfo=TZ_UTC_8)
-
-            # 1.1 更新訂單開始作業時間
-            timestamp_ms = int(_now_time.timestamp() * 1000)
-            self.event_dict['detail'][self.order_id]['start_at'] = timestamp_ms
-            payload = {
-                'order_id': self.order_id,
-                'start_at': self.event_dict['detail'][self.order_id]['start_at'],
-                'end_at': None,
-            }
-            self.kpm.send_message(topic='inst.prod-orders', key=self.mach_name, payload=payload)
-
-            ret += 1
-            self.logging.info(f'Production Begins Based on the Order [{self.order_id}].')
-
-
-            # 1.2 更新機台狀態 : IDLE -> RUNNING
-            payload = {
-                'machine_id': self.mach_id,
-                'status': _status,
-                'event_time': timestamp_ms,
-            }
-            self.kpm.send_message(topic='inst.status-logs', key=self.mach_name, payload=payload)
-
-            ret += 1
-
-        else:
-            return
-
-        if _status != 'RUNNING':
+        # 1. 確認當前狀態是否正常 否則不進行後續邏輯 ( 可能中突為 Alarm... )
+        if self.status != 'RUNNING':
             return 0
 
-        # 2. 用訂單 ID 取得產品 ID
-        _product_id = self.event_dict['order_dict'].get(self.order_id).get('prod_id')
-
-        # 3. 根據效率增加生產數量
+        # 2. 根據效率增加生產數量
         for _ in range(efficiency):
 
-            # 4. 隨機生產數
-            _quantity = random.randint(self.env['SIMULATE']['prod_qty_min'], self.env['SIMULATE']['prod_qty_max'])
+            # 3. 隨機生產數
+            _quantity = random.randint(
+                self.env['SIMULATE']['prod_qty_min'],
+                self.env['SIMULATE']['prod_qty_max']
+            )
 
-            _now_time = get_now(hours=8, tzinfo=TZ_UTC_8)
-            timestamp_ms = int(_now_time.timestamp() * 1000)
-
-            # 5. 更新事務字典中的訂單計數狀況
-            # TODO 同時檢查是否完成訂單 ( 非外部迴圈判斷 )
-            self._update_order_status(_quantity)
-            self.event_dict['detail'][self.order_id]['produced_qty'] += _quantity
-
-            # 6. 插入交易日誌
-            payload = {
-                'order_id': self.order_id,
-                'machine_id': self.mach_id,
-                'product_id': _product_id,
-                'quantity': self.event_dict['detail'][self.order_id]['produced_qty'],
-                'event_time': timestamp_ms,
-            }
-            self.kpm.send_message(topic='inst.prod-records', key=self.mach_name, payload=payload)
-            ret += 1
+            # TODO 4. 更新事務字典中的訂單計數狀況 + 同時檢查是否完成訂單 ( 非外部迴圈判斷 )
+            self.event_dict['produced_qty'] += _quantity
+            ret += self._update_order_status()
 
         return ret
 
@@ -412,43 +341,74 @@ class Application(EntryPoint):
             - RUNNING     # 3 # process: [3 -> 2], [3 -> 4]
             - ALARM       # 4 # process: [4 -> 3]
         """
-        _status = None
-
-        # 1. 取得當前狀態
-        _event_status = self.event_dict['machine_status']['status']
-
-        # 直接返回且不更新狀態
-        if _event_status is None:
+        # 1. 直接返回且不更新狀態
+        if self.status is None:
             return 0
 
         # 2. 實施隨機邏輯
-        _status = self.mss.get_next_status(_event_status)
+        _status = self.mss.get_next_status(self.status)
 
-        # 直接返回且不更新狀態
-        if _event_status == _status:
+        # 3. 直接返回且不更新狀態
+        if self.status == _status:
             return 0
+        else:
+            # 4. 更新當前狀態
+            self.status = _status
 
-        # 3. 更新當前狀態
-        self.event_dict['machine_status']['status'] = _status
-
+        # 5. 提交狀態更新
         _now_time = get_now(hours=8, tzinfo=TZ_UTC_8)
         timestamp_ms = int(_now_time.timestamp() * 1000)
-
-        # 4. 提交狀態更新
         payload = {
             'machine_id': self.mach_id,
-            'status': _status,
+            'status': self.status,
             'event_time': timestamp_ms,
         }
         self.kpm.send_message(topic='inst.status-logs', key=self.mach_name, payload=payload)
         return 1
 
 
+    def _order_start(self) -> int:
+        """FIXME 更新訂單開始作業時間 + 初始化暫存表 ( 若中途斷掉 進度則缺失 [僅該筆] )"""
+        ret = 0
+        _now_time = get_now(hours=8, tzinfo=TZ_UTC_8)
+        timestamp_ms = int(_now_time.timestamp() * 1000)
+
+        self.status = 'RUNNING'
+        self.event_dict = {
+            'product_id': _data['prod_id'],
+            'target_qty': _data['target_qty'],
+            'produced_qty': 0,
+            'start_at': timestamp_ms,
+            'end_at': None,
+        }
+
+        payload = {
+            'order_id': self.order_id,
+            'start_at': self.event_dict['start_at'],
+            'end_at': self.event_dict['end_at'],
+        }
+        self.kpm.send_message(topic='inst.prod-orders', key=self.mach_name, payload=payload)
+        ret += 1
+
+        self.logging.info(f'Production Begins Based on the Order [{self.order_id}].')
+
+        # 更新機台狀態 : IDLE -> RUNNING
+        payload = {
+            'machine_id': self.mach_id,
+            'status': self.status,
+            'event_time': self.event_dict['start_at'],
+        }
+        self.kpm.send_message(topic='inst.status-logs', key=self.mach_name, payload=payload)
+        ret += 1
+
+        return ret
+
+
     def _producer_message(self, **kwargs):
         """
         TODO 生產者配置
         """
-        batch_ct, done_qty = 0, 0
+        batch_ct = 0
         last_commit_time = time.time()
         try:
             while not self._stop_event.is_set():
@@ -457,41 +417,44 @@ class Application(EntryPoint):
                     mode = self.mss.get_load_profile(now.hour)
                     load_setting = self.env['LOAD_CFG'][mode]
 
-                    efficiency = load_setting['efficiency']
+                    # TODO 從資料庫拿取「下一張待處理訂單」
+                    if self.order_id is None and self.raw_data is None:
+                        current_task = self._get_next_pending_order()
 
-                    # TODO 嘗試從資料庫拿取「下一張待處理」的單
-                    current_task = self._get_next_pending_order()
+                        if current_task is None:
+                            # 當前無訂單 => 空轉
+                            time.sleep(1)
+                            continue
+                        else:
+                            # TODO 起始變數更新
+                            self.order_id = current_task['order_id']
+                            self.raw_data = current_task['raw_data']
+                            batch_ct += self._order_start()
 
-                    # TODO 進行判斷狀態更新
-                    _ct = self._insert_production_record(efficiency)
-                    if isinstance(_ct, int):
-                        batch_ct = batch_ct + _ct
+
+                    # TODO 進行判斷狀態更新 + 同時檢查是否完成訂單
+                    batch_ct += self._insert_production_record(load_setting['efficiency'])
 
                     # TODO 隨機更新指定狀態
-                    _ct = self._insert_machine_status()
-                    batch_ct = batch_ct + _ct
+                    batch_ct += self._insert_machine_status()
 
-                    _ct, _ct_2 = self._update_order_status()
-                    done_qty, batch_ct = done_qty + _ct_2, batch_ct + _ct
 
                     # TODO 根據 BATCH_SIZE 或 時間間隔 提交事務
-                    if batch_ct >= self.env['BATCH_SIZE'] or (time.time() - last_commit_time) > self.env['BATCH_INTERVAL']:
+                    if batch_ct >= self.env['BATCH_SIZE'] \
+                            or (time.time() - last_commit_time) > self.env['BATCH_INTERVAL']:
                         self.kpm.poll(0)
                         batch_ct = 0
                         last_commit_time = time.time()
 
+
                     # TODO 輸出當前模擬狀態
-                    ret = ''
-                    if self.order_id is not None:
-                        _detail = self.event_dict['detail'][self.order_id]
-                        ret += f'{_detail['produced_qty']}/{_detail['target_qty']}'
                     self.logging.info(
                         f'[{self.env['_MAIN_NAME']}] 整體の概要 : '
                         f'MODE={mode} | '
-                        f'訂單完成={done_qty}\n'
-                        f'[PROGRESS #{self.order_id}]=[{ret}] | '
+                        f'[PROGRESS #{self.order_id}]='
+                        f'[{self.event_dict['produced_qty']}/{self.event_dict['target_qty']}] | '
                         f'BATCH=[{batch_ct}/{self.env['BATCH_SIZE']}] | '
-                        f'機台の狀態 : {self.event_dict['machine_status']['status']}\n'
+                        f'機台の狀態 : {self.status}\n'
                     )
 
                     time.sleep(1)
@@ -528,7 +491,6 @@ class Application(EntryPoint):
                         # self.logging.info(f"[{self.env['_MAIN_NAME']}] 收到來自 {key}: {data}")
 
                         _status = self._save_to_sqlite(data)
-
                         if _status:
                             # TODO 資料庫寫入成功 => 提交 Offset
                             self.kcm.commit(asynchronous=False)
@@ -545,7 +507,14 @@ class Application(EntryPoint):
 
         finally:
             self.kcm.close()
-            self.conn.close()
+
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """上下文管理器 : 結束"""
+        self.conn.commit()
+        self.logging.warning('已落實最後一次事務提交 ...')
+        close_conn(self.conn, self.cursor)
+        return False
 
 
     def run(self):
