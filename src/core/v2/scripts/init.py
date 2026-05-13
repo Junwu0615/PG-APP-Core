@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import sys, os; sys.path.insert(0, os.getcwd())
 
+from shared.configs import random, load_dotenv
 from shared.utils.tools import *
 from shared.utils.env_config import GET_PATH_ROOT, get_logger_name
 from shared.utils.postgres_tools import get_conn, close_conn, table_exists
@@ -9,15 +10,20 @@ from shared.modules.log import Logger
 
 console_name = get_logger_name(__file__, GET_PATH_ROOT)
 logging = Logger(console_name=console_name)
+load_dotenv(dotenv_path=f'{'/'.join(__file__.split('/')[:-1])}/.env')
 
+_YAML_VERSION = os.getenv('YAML_VERSION', 'v2')
+_YAML_CONFIGS = parsing_yaml(os.path.join('./src/core', f'{_YAML_VERSION}', 'factory_config.yaml'))
 
-YAML_VERSION = 'v2'
-YAML_PATH = os.path.join('./src/core', f'{YAML_VERSION}', 'factory_config.yaml')
-config = parsing_yaml(YAML_PATH)
-
-db = config['database']
-init_data = config['init_data']
-simulate = config['simulate']
+init_data = _YAML_CONFIGS['init_data']
+simulate = _YAML_CONFIGS['simulate']
+db = {
+    'host': os.getenv('POSTGRES_HOST', None),
+    'port': os.getenv('POSTGRES_PORT', None),
+    'database': os.getenv('POSTGRES_DATABASE', None),
+    'user': os.getenv('POSTGRES_USER', None),
+    'password': os.getenv('POSTGRES_PWD', None),
+}
 
 
 def generate_machines(conn, cursor):

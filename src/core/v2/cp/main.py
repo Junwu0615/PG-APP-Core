@@ -8,6 +8,8 @@ TODO
 import sys, os; sys.path.insert(0, os.getcwd())
 
 from shared.configs import (
+    time,
+    random,
     load_dotenv,
     psycopg2,
 )

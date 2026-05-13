@@ -1,5 +1,5 @@
 init_data:
-  products: 1 # 自動化生成訂單 ( 初始化 + 每周期機率 )
+  products: 10 # 自動化生成訂單 ( 初始化 + 每周期機率 )
   machine_layout: # 建立已知機台訊息
     L1: ["CNC","CNC","DRILL","LATHE","CNC","LATHE"]
     L2: ["CNC","DRILL","DRILL","LATHE","LATHE","CNC"]
