@@ -10,8 +10,8 @@ import sys, os; sys.path.insert(0, os.getcwd())
 from shared.configs import (
     time,
     random,
-    load_dotenv,
     psycopg2,
+    load_dotenv,
 )
 from shared.configs.constant import *
 from shared.utils.tools import *
