@@ -59,4 +59,18 @@ tree -d -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data'
 </ul>
 </details>
 
+<br>
+
+### *B.　Command Platform*
+```
+python3 src/core/v2/cp/main.py
+```
+
+<br>
+
+### *C.　Instance*
+```
+python3 src/core/v2/inst/main.py
+```
+
 <br><br><br>
