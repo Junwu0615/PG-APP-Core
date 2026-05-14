@@ -11,11 +11,7 @@ TODO
 import sys, os; sys.path.insert(0, os.getcwd())
 
 from shared.configs import (
-    json,
-    time,
-    random,
-    sqlite3,
-    load_dotenv,
+    json, time, random, sqlite3, load_dotenv,
 )
 from shared.configs.constant import *
 from shared.utils.tools import *
@@ -79,10 +75,17 @@ class Application(EntryPoint):
             # file_name=self.mach_name,
             # file_path=f'logs/INSTANCE/{self.mach_name}.logs',
             backup_count=10,
-            **{
+            symbol_tag={
                 'app_name': 'pg',
                 'service_type': 'instance',
                 'inst_id': self.mach_name,
+            },
+            **{
+                'LOGSTASH_HOST': os.getenv('LOGSTASH_HOST'),
+                'LOGSTASH_PORT': os.getenv('LOGSTASH_PORT'),
+                'LOKI_HOST': os.getenv('LOKI_HOST'),
+                'LOKI_PORT': os.getenv('LOKI_PORT'),
+                'IS_KUBERNETES': os.getenv('IS_KUBERNETES'),
             }
         )
 
@@ -184,6 +187,10 @@ class Application(EntryPoint):
             # 原子性： 保證資料庫不會出現半成品
             with self.conn:
                 self.cursor.execute(sql, params)
+
+            self.logging.notice(f'儲存來自 Consumer 訂單訊息 | order id: {data['order_id']}',
+                                extra_tags={'order_id': data['order_id'], 'step': '0'})
+
             return True
 
         except Exception as e:
@@ -236,6 +243,9 @@ class Application(EntryPoint):
                 row = self.cursor.fetchone()
 
                 if row:
+                    self.logging.notice(f'取出排隊順位第一個訂單 | order id: {row[0]}',
+                                        extra_tags={'order_id': row[0], 'step': '1'})
+
                     return {
                         'order_id': row[0],
                         'raw_data': json.loads(row[1])
@@ -256,6 +266,9 @@ class Application(EntryPoint):
                     SET status=2, update_at=DATETIME('now', 'localtime')
                     WHERE order_id = ?
                 """, (self.order_id,))
+
+            self.logging.notice(f'完成訂單並標記狀態 | order id: {self.order_id}',
+                                extra_tags={'order_id': self.order_id, 'step': '2'})
 
             # 清除當前訂單相關變數
             self.order_id = None
@@ -348,8 +361,9 @@ class Application(EntryPoint):
             )
 
             # TODO 4. 更新事務字典中的訂單計數狀況 + 同時檢查是否完成訂單 ( 非外部迴圈判斷 )
-            self.event_dict['produced_qty'] += _quantity
-            ret += self._update_order_status()
+            if 'produced_qty' in self.event_dict:
+                self.event_dict['produced_qty'] += _quantity
+                ret += self._update_order_status()
 
         return ret
 

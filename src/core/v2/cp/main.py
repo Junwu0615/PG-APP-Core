@@ -8,10 +8,7 @@ TODO
 import sys, os; sys.path.insert(0, os.getcwd())
 
 from shared.configs import (
-    time,
-    random,
-    psycopg2,
-    load_dotenv,
+    time, random, psycopg2, load_dotenv,
 )
 from shared.configs.constant import *
 from shared.utils.tools import *
@@ -54,9 +51,16 @@ class Application(EntryPoint):
             # file_name='main',
             # file_path=f'logs/CP/main.logs',
             backup_count=10,
-            **{
+            symbol_tag={
                 'app_name': 'pg',
                 'service_type': 'command platform',
+            },
+            **{
+                'LOGSTASH_HOST': os.getenv('LOGSTASH_HOST'),
+                'LOGSTASH_PORT': os.getenv('LOGSTASH_PORT'),
+                'LOKI_HOST': os.getenv('LOKI_HOST'),
+                'LOKI_PORT': os.getenv('LOKI_PORT'),
+                'IS_KUBERNETES': os.getenv('IS_KUBERNETES'),
             }
         )
 
