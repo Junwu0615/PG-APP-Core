@@ -15,7 +15,12 @@ tree -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data'
 tree -d -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data'
 
 .
+├── LICENSE
 ├── README.md
+├── kafka_consumer_local.db
+├── kafka_consumer_local.db-shm
+├── kafka_consumer_local.db-wal
+├── requirements.txt
 └── src
     ├── __init__.py
     ├── core
