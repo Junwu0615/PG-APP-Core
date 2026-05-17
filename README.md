@@ -77,14 +77,33 @@ python3 src/core/v2/inst/main.py
 
 <br>
 
-### *D.　Before Push Code*
+### *D.1.　[ Manual ] Before Push Code*
 ```bash
+# <語法格式版本>
+black --version
 # <語法格式檢查>
 black src/
 
 # 期望輸出
 # All done! ✨ 🍰 ✨
 # ?? files left unchanged.
+```
+
+<br>
+
+### *⭐ D.2.　[ Auto - Global Var ] Just Push Code*
+```bash
+# 1. 透過 Ubuntu 系統套件管理員安裝 pipx
+sudo apt update && sudo apt install -y pipx
+
+# 2. pipx 自動配置環境變數路徑
+pipx ensurepath
+
+# 3. 用 pipx 安裝 pre-commit
+pipx install pre-commit
+
+# 4. 當前專案的 Git 與 pre-commit 工具正式綁定
+pre-commit install
 ```
 
 <br><br><br>

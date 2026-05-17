@@ -1,0 +1,19 @@
+# .pre-commit-config.yaml
+repos:
+  # 1. 鎖定 Black 版本
+  - repo: https://github.com/psf/black
+    rev: 24.2.0
+    hooks:
+      - id: black
+        # 只檢查 dags 目錄
+        files: ^dags/
+
+  # 2. 鎖定 Flake8 版本
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        # 把你原本 CI 寫的精準檢查參數塞在這裡
+        args: [--count, "--select=E9,F63,F7,F82", --show-source, --statistics]
+        # 只檢查 dags 目錄
+        files: ^dags/
