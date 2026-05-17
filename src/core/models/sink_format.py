@@ -1,6 +1,6 @@
 SINK_MACH_STATUS_LOGS = {
-    'topic': 'inst.status-logs',
-    'content': """
+    "topic": "inst.status-logs",
+    "content": """
 {
   "type": "record",
   "name": "oltp.machine_status_logs",
@@ -22,8 +22,8 @@ SINK_MACH_STATUS_LOGS = {
 
 
 SINK_PROD_ORDERS = {
-    'topic': 'inst.prod-orders',
-    'content': """
+    "topic": "inst.prod-orders",
+    "content": """
 {
   "type": "record",
   "name": "oltp.production_orders",
@@ -62,8 +62,8 @@ SINK_PROD_ORDERS = {
 
 
 SINK_PROD_RECORDS = {
-    'topic': 'inst.prod-records',
-    'content': """
+    "topic": "inst.prod-records",
+    "content": """
 {
   "type": "record",
   "name": "oltp.production_records",
