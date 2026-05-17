@@ -77,7 +77,7 @@ python3 src/core/v2/inst/main.py
 
 <br>
 
-### *D.1.　[ Manual - Not Recommended ] Before Push Code*
+### *D.1.　[ Manual - Not Recommended ]　Before Push Code*
 ```bash
 # <語法格式版本>
 black --version
@@ -91,7 +91,7 @@ black src/
 
 <br>
 
-### *⭐ D.2.　[ Auto - Global Var ] Just Push Code*
+### *⭐ D.2.　[ Auto - Global Var ]　Just Push Code*
 ```bash
 # 全域設定 ( 一次性 )
     # 1. 透過 Ubuntu 系統套件管理員安裝 pipx
