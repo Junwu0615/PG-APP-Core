@@ -77,7 +77,7 @@ python3 src/core/v2/inst/main.py
 
 <br>
 
-### *D.1.　[ Manual ] Before Push Code*
+### *D.1.　[ Manual - Not Recommended ] Before Push Code*
 ```bash
 # <語法格式版本>
 black --version
@@ -105,6 +105,9 @@ black src/
 
 # ⭐ 當前專案的 Git 與 pre-commit 工具正式綁定
 pre-commit install
+
+# ⭐ 強制檢查
+pre-commit run --all-files
 ```
 
 <br><br><br>
