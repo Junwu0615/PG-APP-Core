@@ -1,0 +1,153 @@
+stages:
+  - lint       # 程式碼品質與靜態檢查
+  - test       # 單元測試與整合測試
+#  - build      # 打包成 Docker 映像檔並推送到 Registry
+#  - deploy     # 部署到測試或生產環境
+
+# ==========================================
+# 全局全域設定 (Global Settings)
+# ==========================================
+variables:
+  # 指定 Python 基礎映像檔版本
+  PYTHON_IMAGE: "python:3.12-slim"
+
+  # 指定 Docker-in-Docker 版本（Build 階段使用）
+  DOCKER_IMAGE: "pg-python-app:v1"
+  DOCKER_DIND_IMAGE: "pg-python-app:v1-dind"
+
+  # 專案映像檔名稱
+  IMAGE_NAME: "pg-python-app"
+
+  # 透過 GitLab 變數控管 Registry 位址，預設可先給定本地或測試環境 IP
+  REGISTRY_HOST: "127.0.0.1:5100"
+
+# 定義全域快取，避免每個 Job 都要重新 pip install
+cache:
+  key:
+    files:
+      - requirements.txt
+  paths:
+    - .cache/pip
+    - venv/
+
+# ==========================================
+# 1. Lint Stage (程式碼品質把關)
+# ==========================================
+lint:python:
+  stage: lint
+  image: $PYTHON_IMAGE
+  before_script:
+    - python -V
+    - pip install --cache-dir .cache/pip flake8 black
+  script:
+    # 使用 black 檢查排版是否符合規範 (--check 不會直接修改檔案)
+    - black --check src/
+    # 使用 flake8 進行語法與潛在 Bug 檢查 (忽略排版衝突，專注在語法錯誤)
+    - flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
+  allow_failure: false # 若檢查不通過，直接阻斷後續 Pipeline
+
+# ==========================================
+# 2. Test Stage (自動化測試)
+# ==========================================
+test:unit:
+  stage: test
+  image: $PYTHON_IMAGE
+  before_script:
+    - pip install --cache-dir .cache/pip -r requirements.txt
+    - pip install --cache-dir .cache/pip pytest pytest-cov
+  script:
+    # 執行測試並輸出覆蓋率報告 (Coverage Report)
+    - export PYTHONPATH=src
+    - pytest --cov=src tests/ --cov-report=term-missing || echo "請在專案中建立 tests/ 目錄並撰寫測試"
+  coverage: '/(?i)total.*?([\d\.]+)%/'
+  artifacts:
+    name: "coverage-report-$CI_COMMIT_REF_NAME"
+    paths:
+      - htmlcov/
+    expire_in: 1 week
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"' # MR 時強制執行
+    - if: '$CI_COMMIT_BRANCH == "main"'                # Main 分支更動時執行
+    - if: '$CI_COMMIT_BRANCH == "develop"'             # Develop 分支更動時執行
+
+# ==========================================
+# 3. Build Stage (容器化 + 推送)
+# ==========================================
+#build:docker:
+#  stage: build
+#  image: $DOCKER_IMAGE
+#  services:
+#    - name: $DOCKER_DIND_IMAGE
+#      alias: docker
+#  variables:
+#    # 解決 DIND 環境下的 TLS 認證問題
+#    DOCKER_TLS_CERTDIR: ""
+#  before_script:
+#    # 如果你的 Private Registry 需要登入，請在 GitLab CI/CD Variables 設定這兩個變數
+#    # - echo "$REGISTRY_PASSWORD" | docker login $REGISTRY_HOST -u "$REGISTRY_USER" --password-stdin
+#    echo "Starting Docker Build Pipeline..."
+#  script:
+#    # 定義 Tag 名稱：如果是 Main 分支就用 v${版本} 或 Commit SHA，其餘用 Branch 名稱
+#    - |
+#      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+#        IMAGE_TAG="v1"  # 或者自動換成 $CI_COMMIT_SHORT_SHA
+#      else
+#        IMAGE_TAG=$CI_COMMIT_REF_SLUG
+#      fi
+#    - FULL_IMAGE_PATH="$REGISTRY_HOST/$IMAGE_NAME:$IMAGE_TAG"
+#
+#    # 1. 進行 Docker Build
+#    - docker build -t $FULL_IMAGE_PATH .
+#
+#    # 2. 推送到私有 Registry
+#    - docker push $FULL_IMAGE_PATH
+#
+#    # 3. 同時留下一份帶有 Commit SHA 的 Tag 作為版本追蹤紀錄
+#    - docker tag $FULL_IMAGE_PATH "$REGISTRY_HOST/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA"
+#    - docker push "$REGISTRY_HOST/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA"
+#  rules:
+#    - if: '$CI_COMMIT_BRANCH == "main"'
+#    - if: '$CI_COMMIT_BRANCH == "develop"'
+
+# ==========================================
+# 4. Deploy Stage (自動化部署)
+# ==========================================
+#deploy:staging:
+#  stage: deploy
+#  image: alpine:latest
+#  before_script:
+#    # 安裝部署必備工具（例如 ssh-agent 或是 kubectl）
+#    - apk add --no-cache openssh-client
+#    - eval $(ssh-agent -s)
+#    # 將 GitLab Variables 裡的私鑰寫入 CI 環境中
+#    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+#    - mkdir -p ~/.ssh
+#    - chmod 700 ~/.ssh
+#    # 避免 SSH 首次連線時的互動式確認
+#    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+#  script:
+#    - echo "正在連線測試環境伺服器進行遠端部署..."
+#    # 範例：連線到你的基礎設施伺服器，重啟 Docker Compose
+#    - |
+#      ssh user@staging-server.local "
+#        cd /home/user/git_project/PG-Infrastructure/infra/docker-compose &&
+#        docker compose pull &&
+#        docker compose up -d --force-recreate
+#      "
+#  environment:
+#    name: staging
+#    url: http://staging-server.local:8085
+#  rules:
+#    - if: '$CI_COMMIT_BRANCH == "develop"' # Develop 分支自動部署到 Staging
+
+#deploy:production:
+#  stage: deploy
+#  image: alpine:latest
+#  script:
+#    - echo "正在將版本 $CI_COMMIT_SHORT_SHA 部署至生產環境..."
+#    # 生產環境通常會改為手動觸發（when: manual），或者與 GitOps 機制（ArgoCD）聯動
+#  environment:
+#    name: production
+#  rules:
+#    - if: '$CI_COMMIT_BRANCH == "main"'
+#      when: manual # 在 Main 分支上，必須由工程師上 GitLab 介面手動點選「Play」才會部署

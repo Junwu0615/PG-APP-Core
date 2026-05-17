@@ -17,9 +17,6 @@ tree -d -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data'
 .
 ├── LICENSE
 ├── README.md
-├── kafka_consumer_local.db
-├── kafka_consumer_local.db-shm
-├── kafka_consumer_local.db-wal
 ├── requirements.txt
 └── src
     ├── __init__.py
@@ -76,6 +73,18 @@ python3 src/core/v2/cp/main.py
 ### *C.　Instance*
 ```
 python3 src/core/v2/inst/main.py
+```
+
+<br>
+
+### *D.　Before Push Code*
+```bash
+# <語法格式檢查>
+black src/
+
+# 期望輸出
+# All done! ✨ 🍰 ✨
+# ?? files left unchanged.
 ```
 
 <br><br><br>
