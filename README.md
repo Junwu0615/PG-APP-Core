@@ -93,7 +93,7 @@ black src/
 
 ### *⭐ D.2.　[ Auto - Global Var ] Just Push Code*
 ```bash
-# 1. 透過 Ubuntu 系統套件管理員安裝 pipx 
+# 1. 透過 Ubuntu 系統套件管理員安裝 pipx
 sudo apt update && sudo apt install -y pipx
 
 # 2. pipx 自動配置環境變數路徑
