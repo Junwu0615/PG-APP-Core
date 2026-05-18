@@ -63,51 +63,49 @@ tree -d -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data'
 
 <br>
 
-### *B.　Command Platform*
-```
-python3 src/core/v2/cp/main.py
-```
+### *B.　Execution*
+- #### *b.1.　Command Platform*
+    ```
+    python3 src/core/v2/cp/main.py
+    ```
+
+- #### *b.2.　Instance*
+    ```
+    python3 src/core/v2/inst/main.py
+    ```
 
 <br>
 
-### *C.　Instance*
-```
-python3 src/core/v2/inst/main.py
-```
-
-<br>
-
-### *D.1.　[ Manual - Not Recommended ]　Before Push Code*
-```bash
-# <語法格式版本>
-black --version
-# <語法格式檢查>
-black src/
-
-# 期望輸出
-# All done! ✨ 🍰 ✨
-# ?? files left unchanged.
-```
-
-<br>
-
-### *⭐ D.2.　[ Auto - Global Var ]　Just Push Code*
-```bash
-# 全域設定 ( 一次性 )
-    # 1. 透過 Ubuntu 系統套件管理員安裝 pipx
-    sudo apt update && sudo apt install -y pipx
+### *C.　Push Code*
+- #### *c.1.　Manual => Not Recommended*
+    ```bash
+    # <語法格式版本>
+    black --version
+    # <語法格式檢查>
+    black src/
     
-    # 2. pipx 自動配置環境變數路徑
-    pipx ensurepath
+    # 期望輸出
+    # All done! ✨ 🍰 ✨
+    # ?? files left unchanged.
+    ```
+
+- #### *c.2.　Auto => Recommended*
+    ```bash
+    # 全域設定 ( 一次性 )
+        # 1. 透過 Ubuntu 系統套件管理員安裝 pipx
+        sudo apt update && sudo apt install -y pipx
+        
+        # 2. pipx 自動配置環境變數路徑
+        pipx ensurepath
+        
+        # 3. 用 pipx 安裝 pre-commit
+        pipx install pre-commit
     
-    # 3. 用 pipx 安裝 pre-commit
-    pipx install pre-commit
-
-# ⭐ 當前專案的 Git 與 pre-commit 工具正式綁定
-pre-commit install
-
-# ⭐ 強制檢查
-pre-commit run --all-files
-```
+    # ⭐ 當前專案的 .pre-commit-config.yaml & pre-commit 工具正式綁定
+    pre-commit install
+    
+    # ⭐ 強制檢查
+    pre-commit run --all-files
+    ```
 
 <br><br><br>

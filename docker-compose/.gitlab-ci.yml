@@ -22,7 +22,7 @@ variables:
   # 專案映像檔名稱
   IMAGE_NAME: "pg-python-app"
 
-  # 透過 GitLab 變數控管 Registry 位址，預設可先給定本地或測試環境 IP
+  # 透過 GitLab 變數控管 Registry 位址
   REGISTRY_HOST: "127.0.0.1:5100"
 
 
@@ -64,22 +64,22 @@ test:unit:
   stage: test
   image: $PYTHON_IMAGE
   before_script:
-    # 確保系統裝有 sqlite（Airflow 測試必備底層依賴）
-    - apt-get update && apt-get install -y sqlite3 libsqlite3-dev
     - pip install --cache-dir .cache/pip -r requirements.txt
     - pip install --cache-dir .cache/pip pytest pytest-cov
   script:
-    # 1. 設定 PYTHONPATH 使測試腳本找得到 src
+    # 設定 PYTHONPATH 使測試腳本找得到 src
     - export PYTHONPATH=.:src
 
+    # 執行 pytest 並針對你的自定義模組（假設資料夾叫 my_utils）統計覆蓋率
+    # 如果代碼直接在根目錄，可以寫 --cov=.
+    - pytest --cov=. tests/ --cov-report=term-missing --cov-report=html
   coverage: '/(?i)total.*?([\d\.]+)%/'
   artifacts:
     name: "coverage-report-$CI_COMMIT_REF_NAME"
     paths:
-      - htmlcov/ # 如果 pytest 沒產生，可以先註解掉或保留
-
+      # 如果 pytest 沒產生，可以先註解掉或保留
+      - htmlcov/
     expire_in: 1 week
-
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "main"'
