@@ -4,15 +4,14 @@
 
 <br>
 
-### *A.　Roadmap*
+### *A.　Implement*
 
 <details>
 <summary><b><i>　Tree </i></b></summary>
 <ul>
 
 ```bash
-tree -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data'
-tree -d -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data'
+tree -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data|charts'
 
 .
 ├── LICENSE
@@ -77,7 +76,7 @@ tree -d -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data'
 <br>
 
 ### *C.　Push Code*
-- #### *c.1.　Manual => Not Recommended*
+- #### *c.1.　Manual → Not Recommended*
     ```bash
     # <語法格式版本>
     black --version
@@ -89,7 +88,7 @@ tree -d -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data'
     # ?? files left unchanged.
     ```
 
-- #### *c.2.　Auto => Recommended*
+- #### *c.2.　Auto → Recommended*
     ```bash
     # 全域設定 ( 一次性 )
         # 1. 透過 Ubuntu 系統套件管理員安裝 pipx

@@ -192,10 +192,10 @@ class Application(EntryPoint):
             params = (data["order_id"], json.dumps(data))
 
             # 當 with 區塊內的程式碼全部成功執行完畢時，自動呼叫 self.conn.commit()
-            # => 確保資料被永久寫入硬碟
+            # → 確保資料被永久寫入硬碟
 
             # 如果區塊內任何一行 SQL 噴出 Exception (如硬碟滿、JSON 格式錯誤、型別不合)，自動呼叫 self.conn.rollback()
-            # => 撤銷該次事務中所有已執行的操作
+            # → 撤銷該次事務中所有已執行的操作
 
             # 原子性： 保證資料庫不會出現半成品
             with self.conn:
@@ -234,7 +234,7 @@ class Application(EntryPoint):
 
     def _get_next_pending_order(self):
         """
-        1. 優先查詢 status=0 的訂單 => 取出排隊順位第一個訂單，並立即標記為處理中 (status=1)
+        1. 優先查詢 status=0 的訂單 → 取出排隊順位第一個訂單，並立即標記為處理中 (status=1)
             # 如果系統健壯，status=1 應該在程式運行時被即時轉換為 2
             # 若程式重啟，status=1 應已透過 _recover_stuck_orders 轉為 0
         2. 採用原子操作，確保不會有同時抓到同一張單
@@ -487,7 +487,7 @@ class Application(EntryPoint):
                         current_task = self._get_next_pending_order()
 
                         if current_task is None:
-                            # 當前無訂單 => 空轉
+                            # 當前無訂單 → 空轉
                             time.sleep(1)
                             continue
                         else:
@@ -559,10 +559,10 @@ class Application(EntryPoint):
 
                         _status = self._save_to_sqlite(data)
                         if _status:
-                            # TODO 資料庫寫入成功 => 提交 Offset
+                            # TODO 資料庫寫入成功 → 提交 Offset
                             self.kcm.commit(asynchronous=False)
                         else:
-                            # TODO 資料庫寫入失敗 => 不提交 下次重試
+                            # TODO 資料庫寫入失敗 → 不提交 下次重試
                             self.logging.error(
                                 "資料庫寫入失敗不提交 ...", exc_info=False
                             )
@@ -594,7 +594,7 @@ class Application(EntryPoint):
             - MQTT ( Kafka ) : 「消費」/「傳送」訊息
                 - 消費 : source.cp.mach-order 訂單訊息
                 - 傳送 : ...
-            - Offset 儲存：Kafka 根據 Key 紀錄消費數字 ; KEY => ( group.id + Topic + Partition ID )
+            - Offset 儲存：Kafka 根據 Key 紀錄消費數字 ; KEY → ( group.id + Topic + Partition ID )
         """
         self.logging.notice(
             f'[{self.env["_MAIN_NAME"]}] Starting Factory Stream Simulation ...'
