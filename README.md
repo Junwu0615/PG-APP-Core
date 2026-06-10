@@ -16,45 +16,52 @@ tree -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data|charts'
 .
 ├── LICENSE
 ├── README.md
+├── ci-scripts
+│   ├── cp
+│   └── inst
 ├── requirements.txt
-└── src
-    ├── __init__.py
-    ├── core
-    │   ├── __init__.py
-    │   ├── models
-    │   │   ├── __init__.py
-    │   │   ├── simulator.py
-    │   │   └── sink_format.py
-    │   ├── v1
-    │   │   ├── __init__.py
-    │   │   ├── factory_config.yaml
-    │   │   ├── init_factory_data.py
-    │   │   └── simulate_factory_stream.py
-    │   └── v2
-    │       ├── __init__.py
-    │       ├── api
-    │       │   └── __init__.py
-    │       ├── cp
-    │       │   ├── __init__.py
-    │       │   └── main.py
-    │       ├── factory_config.yaml
-    │       ├── inst
-    │       │   ├── __init__.py
-    │       │   └── main.py
-    │       └── scripts
-    │           ├── __init__.py
-    │           ├── create_topic.py
-    │           ├── init.py
-    │           └── topics_config.json
-    └── scripts
-        ├── __init__.py
-        ├── generic_benchmark
-        │   ├── dashboard_benchmark.sql
-        │   └── olap_benchmark.sql
-        └── sql
-            ├── auto_partition.py
-            ├── delete_data.py
-            └── drop_table.py
+├── src
+│   ├── __init__.py
+│   ├── core
+│   │   ├── __init__.py
+│   │   ├── models
+│   │   │   ├── __init__.py
+│   │   │   ├── simulator.py
+│   │   │   └── sink_format.py
+│   │   ├── v1
+│   │   │   ├── __init__.py
+│   │   │   ├── factory_config.yaml
+│   │   │   ├── init_factory_data.py
+│   │   │   └── simulate_factory_stream.py
+│   │   └── v2
+│   │       ├── __init__.py
+│   │       ├── api
+│   │       │   └── __init__.py
+│   │       ├── cp
+│   │       │   ├── __init__.py
+│   │       │   └── main.py
+│   │       ├── factory_config.yaml
+│   │       ├── inst
+│   │       │   ├── __init__.py
+│   │       │   └── main.py
+│   │       └── scripts
+│   │           ├── __init__.py
+│   │           ├── create_topic.py
+│   │           ├── init.py
+│   │           └── topics_config.json
+│   └── scripts
+│       ├── __init__.py
+│       ├── generic_benchmark
+│       │   ├── dashboard_benchmark.sql
+│       │   └── olap_benchmark.sql
+│       └── sql
+│           ├── auto_partition.py
+│           ├── delete_data.py
+│           └── drop_table.py
+└── tests
+    ├── test_generic_configs.py
+    ├── test_generic_imports.py
+    └── test_generic_syntax.py
 ```
 
 </ul>
