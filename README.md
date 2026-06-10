@@ -14,11 +14,14 @@
 tree -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data|charts'
 
 .
+├── .pre-commit-config.yaml
 ├── LICENSE
 ├── README.md
 ├── ci-scripts
 │   ├── cp
+│   │   └── .gitlab-ci.yml
 │   └── inst
+│       └── .gitlab-ci.yml
 ├── requirements.txt
 ├── src
 │   ├── __init__.py
