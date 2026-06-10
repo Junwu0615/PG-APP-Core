@@ -10,8 +10,21 @@ from shared.utils.postgres_tools import get_conn, close_conn, table_exists
 from shared.modules.log import Logger
 
 
-console_name = get_logger_name(__file__, GET_PATH_ROOT)
-logging = Logger(console_name=console_name)
+logging = Logger(
+    console_name=get_logger_name(__file__, GET_PATH_ROOT),
+    backup_count=10,
+    symbol_tag={
+        "app_name": "pg",
+        "service_type": "init",
+    },
+    **{
+        "LOGSTASH_HOST": os.getenv("LOGSTASH_HOST", "logstash.k8s.local"),
+        "LOGSTASH_PORT": os.getenv("LOGSTASH_PORT", 5000),
+        "LOKI_HOST": os.getenv("LOKI_HOST", "loki.k8s.local"),
+        "LOKI_PORT": os.getenv("LOKI_PORT", "3100"),
+        "IS_KUBERNETES": os.getenv("IS_KUBERNETES", "true"),
+    },
+)
 load_dotenv(dotenv_path=f"{" / ".join(__file__.split(" / ")[:-1])}/.env")
 
 _YAML_VERSION = os.getenv("YAML_VERSION", "v2")
@@ -22,11 +35,11 @@ _YAML_CONFIGS = parsing_yaml(
 init_data = _YAML_CONFIGS["init_data"]
 simulate = _YAML_CONFIGS["simulate"]
 db = {
-    "host": os.getenv("POSTGRES_HOST", None),
-    "port": os.getenv("POSTGRES_PORT", None),
-    "database": os.getenv("POSTGRES_DATABASE", None),
-    "user": os.getenv("POSTGRES_USER", None),
-    "password": os.getenv("POSTGRES_PWD", None),
+    "host": os.getenv("POSTGRES_HOST", "postgresql.k8s.local"),
+    "port": os.getenv("POSTGRES_PORT", "5432"),
+    "database": os.getenv("POSTGRES_DATABASE", "pgdatabase"),
+    "user": os.getenv("POSTGRES_USER", "oltp_user"),
+    "password": os.getenv("POSTGRES_PWD", "oltp_pwd"),
 }
 
 

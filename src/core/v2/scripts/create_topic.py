@@ -15,10 +15,26 @@ from confluent_kafka.admin import (
     ResourceType,
 )
 
-console_name = get_logger_name(__file__, GET_PATH_ROOT)
-logging = Logger(console_name=console_name, is_logstash=False)
+
+logging = Logger(
+    console_name=get_logger_name(__file__, GET_PATH_ROOT),
+    backup_count=10,
+    symbol_tag={
+        "app_name": "pg",
+        "service_type": "create_topic",
+    },
+    **{
+        "LOGSTASH_HOST": os.getenv("LOGSTASH_HOST", "logstash.k8s.local"),
+        "LOGSTASH_PORT": os.getenv("LOGSTASH_PORT", 5000),
+        "LOKI_HOST": os.getenv("LOKI_HOST", "loki.k8s.local"),
+        "LOKI_PORT": os.getenv("LOKI_PORT", "3100"),
+        "IS_KUBERNETES": os.getenv("IS_KUBERNETES", "true"),
+    },
+)
 load_dotenv(dotenv_path=f"{" / ".join(__file__.split(" / ")[:-1])}/.env")
-KAFKA_HOST = os.getenv("KAFKA_HOST", "127.0.0.1:9092")
+# KAFKA_HOST = os.getenv("KAFKA_HOST", "127.0.0.1:9092")
+KAFKA_HOST = os.getenv("KAFKA_HOST", "172.28.113.34:9092")
+# KAFKA_HOST = os.getenv("KAFKA_HOST", "kafka:29092")
 JSON_PATH = os.path.join(
     "./src/core", f"{os.getenv('YAML_VERSION', 'v2')}", "scripts", "topics_config.json"
 )
