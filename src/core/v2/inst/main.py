@@ -133,9 +133,9 @@ class Application(EntryPoint):
     def _init_sqlite(self):
         """初始化資料庫連線 ( +運行參數設置 ) 與建表邏輯"""
         try:
-            os.makedirs(
-                "".join(self.env["SQLITE_DB_NAME"].split("/")[:-1]), exist_ok=True
-            )
+            _makedirs = "".join(self.env["SQLITE_DB_NAME"].split("/")[:-1])
+            if _makedirs != "":
+                os.makedirs(_makedirs, exist_ok=True)
             self.conn = sqlite3.connect(
                 self.env["SQLITE_DB_NAME"], check_same_thread=False
             )
