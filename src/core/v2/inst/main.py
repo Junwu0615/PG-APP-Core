@@ -55,7 +55,7 @@ class Application(EntryPoint):
         _BATCH_SIZE = _SIMULATE["batch_size"]
         _BATCH_INTERVAL = _SIMULATE["batch_interval"]
 
-        _SQLITE_DB_NAME = os.getenv("SQLITE_DB_NAME", "kafka_consumer_local.db")
+        _SQLITE_DB_NAME = os.getenv("SQLITE_DB_NAME", "data/kafka_consumer_local.db")
         self.mach_id = int(os.getenv("MACH_ID", "67"))
         self.mach_name = os.getenv("MACH_NAME", "M-CNC-30")
 
@@ -97,7 +97,7 @@ class Application(EntryPoint):
                 "LOGSTASH_PORT": os.getenv("LOGSTASH_PORT"),
                 "LOKI_HOST": os.getenv("LOKI_HOST"),
                 "LOKI_PORT": os.getenv("LOKI_PORT"),
-                "IS_KUBERNETES": os.getenv("IS_KUBERNETES"),
+                "IS_KUBERNETES": os.getenv("IS_KUBERNETES", "true"),
             },
         )
 
@@ -133,6 +133,9 @@ class Application(EntryPoint):
     def _init_sqlite(self):
         """初始化資料庫連線 ( +運行參數設置 ) 與建表邏輯"""
         try:
+            os.makedirs(
+                "".join(self.env["SQLITE_DB_NAME"].split("/")[:-1]), exist_ok=True
+            )
             self.conn = sqlite3.connect(
                 self.env["SQLITE_DB_NAME"], check_same_thread=False
             )

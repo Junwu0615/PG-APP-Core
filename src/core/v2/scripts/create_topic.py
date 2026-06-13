@@ -32,9 +32,7 @@ logging = Logger(
     },
 )
 load_dotenv(dotenv_path=f"{" / ".join(__file__.split(" / ")[:-1])}/.env")
-# KAFKA_HOST = os.getenv("KAFKA_HOST", "127.0.0.1:9092")
-KAFKA_HOST = os.getenv("KAFKA_HOST", "172.28.113.34:9092")
-# KAFKA_HOST = os.getenv("KAFKA_HOST", "kafka:29092")
+KAFKA_HOST = os.getenv("KAFKA_HOST", "127.0.0.1:9092")
 JSON_PATH = os.path.join(
     "./src/core", f"{os.getenv('YAML_VERSION', 'v2')}", "scripts", "topics_config.json"
 )
@@ -44,7 +42,16 @@ def sync_kafka_infrastructure(config_file):
     with open(config_file, "r") as f:
         target_cfg = json.load(f)
 
-    admin_client = AdminClient({"bootstrap.servers": KAFKA_HOST})
+    logging.warning(f"KAFKA_HOST: {KAFKA_HOST}")
+    admin_client = AdminClient(
+        {
+            "bootstrap.servers": KAFKA_HOST,
+            "broker.address.family": "v4",  # 強制只走 IPv4，避免 WSL2 內部 IPv6 解析混亂
+            "socket.timeout.ms": 5000,  # 縮短 socket 超時
+            "api.version.request": True,  # 強制向 Broker 請求 API 版本
+            # "debug": "broker,protocol",     # 印出詳細連線軌跡
+        }
+    )
 
     # 1. 取得目前 Kafka 存在的 Topic
     try:
