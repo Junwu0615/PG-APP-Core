@@ -559,8 +559,8 @@ class Application(EntryPoint):
                         self.logging.error(
                             "收到外部中斷訊號，準備自殺 ...", exc_info=False
                         )
-                        if os.path.exists(HEARTBEAT_FILE):
-                            os.remove(HEARTBEAT_FILE)
+                        if os.path.exists(self.env["HEARTBEAT_FILE"]):
+                            os.remove(self.env["HEARTBEAT_FILE"])
                         self.stop_all_services()
 
                     # key = msg.key().decode('utf-8') if msg.key() else 'N/A'
@@ -634,8 +634,8 @@ class Application(EntryPoint):
             except Exception as e:
                 # 邏輯異常時，主動刪除心跳檔
                 logging.error("Exception", exc_info=True)
-                if os.path.exists(HEARTBEAT_FILE):
-                    os.remove(HEARTBEAT_FILE)
+                if os.path.exists(self.env["HEARTBEAT_FILE"]):
+                    os.remove(self.env["HEARTBEAT_FILE"])
                 self.stop_all_services()
 
 
