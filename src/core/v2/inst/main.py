@@ -8,7 +8,6 @@ TODO
             - [thread 1] kafka -> consumer -> sqlite ( N 個實例 = N 個 sqlite 實例 ; 用 Loki 監控是否正常消費 )
             - [thread 2] sqlite ( 每次斷掉重啟由此開始 唯一事實 ; 須建立狀態表 ) -> producer -> kafka -> kafka connection sink
 """
-import logging
 import sys, os
 
 sys.path.insert(0, os.getcwd())
