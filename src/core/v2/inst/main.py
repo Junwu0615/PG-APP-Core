@@ -8,6 +8,7 @@ TODO
             - [thread 1] kafka -> consumer -> sqlite ( N 個實例 = N 個 sqlite 實例 ; 用 Loki 監控是否正常消費 )
             - [thread 2] sqlite ( 每次斷掉重啟由此開始 唯一事實 ; 須建立狀態表 ) -> producer -> kafka -> kafka connection sink
 """
+import logging
 import sys, os
 
 sys.path.insert(0, os.getcwd())
@@ -29,6 +30,11 @@ from shared.modules.kafka_consumer import KafkaConsumerManager
 from shared.modules.kafka_producer import KafkaProducerManager
 from src.core.models.sink_format import *
 from src.core.models.simulator import MachineStatusSimulator
+
+
+HEARTBEAT_FILE = "./data/heartbeat/heartbeat.txt"
+# HEARTBEAT_FILE = None
+write_heartbeat(HEARTBEAT_FILE, "OK")  # 1. 程式啟動時先建立心跳檔
 
 
 class Application(EntryPoint):
@@ -55,7 +61,7 @@ class Application(EntryPoint):
         _BATCH_SIZE = _SIMULATE["batch_size"]
         _BATCH_INTERVAL = _SIMULATE["batch_interval"]
 
-        _SQLITE_DB_NAME = os.getenv("SQLITE_DB_NAME", "data/kafka_consumer_local.db")
+        _SQLITE_DB_NAME = os.getenv("SQLITE_DB_NAME", "./data/kafka_consumer_local.db")
         self.mach_id = int(os.getenv("MACH_ID", "67"))
         self.mach_name = os.getenv("MACH_NAME", "M-CNC-30")
 
@@ -133,7 +139,7 @@ class Application(EntryPoint):
     def _init_sqlite(self):
         """初始化資料庫連線 ( +運行參數設置 ) 與建表邏輯"""
         try:
-            _makedirs = "".join(self.env["SQLITE_DB_NAME"].split("/")[:-1])
+            _makedirs = "/".join(self.env["SQLITE_DB_NAME"].split("/")[:-1])
             if _makedirs != "":
                 os.makedirs(_makedirs, exist_ok=True)
             self.conn = sqlite3.connect(
@@ -551,6 +557,14 @@ class Application(EntryPoint):
                     if msg is None:
                         continue
 
+                    if msg.value().decode("utf-8") == "TRIGGER_KILL_FROM_KAFKA":
+                        self.logging.error(
+                            "收到外部中斷訊號，準備自殺 ...", exc_info=False
+                        )
+                        if os.path.exists(HEARTBEAT_FILE):
+                            os.remove(HEARTBEAT_FILE)
+                        self.stop_all_services()
+
                     # key = msg.key().decode('utf-8') if msg.key() else 'N/A'
                     data = json.loads(msg.value().decode("utf-8"))
 
@@ -615,7 +629,16 @@ class Application(EntryPoint):
             },
         )
         while not self._stop_event.is_set():
-            time.sleep(1)
+            try:
+                write_heartbeat("OK")  # 2. 持續建立心跳檔
+                time.sleep(1)
+
+            except Exception as e:
+                # 邏輯異常時，主動刪除心跳檔
+                logging.error("Exception", exc_info=True)
+                if os.path.exists(HEARTBEAT_FILE):
+                    os.remove(HEARTBEAT_FILE)
+                self.stop_all_services()
 
 
 if __name__ == "__main__":
