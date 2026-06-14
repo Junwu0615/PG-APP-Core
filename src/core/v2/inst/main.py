@@ -559,9 +559,7 @@ class Application(EntryPoint):
 
                     _val = msg.value().decode("utf-8")
                     if _val == "TRIGGER_KILL_FROM_KAFKA":
-                        self.logging.error(
-                            "收到外部中斷訊號，準備自殺 ...", exc_info=False
-                        )
+                        self.logging.notice("收到外部中斷訊號，準備自殺 ...")
                         # 提交防止無止盡自殺
                         self.kcm.commit(asynchronous=False)
 
@@ -569,6 +567,19 @@ class Application(EntryPoint):
                             os.remove(self.env["HEARTBEAT_FILE"])
 
                         self.stop_all_services()
+
+                    elif _val == "TRIGGER_OOM_FROM_KAFKA":
+                        self.logging.notice(
+                            "接收到 OOM 測試指令！開始瘋狂消耗記憶體 ..."
+                        )
+                        # 提交防止無止盡自殺
+                        self.kcm.commit(asynchronous=False)
+
+                        oom_bomb = []
+                        time.sleep(3)
+                        while True:
+                            # 每次循環塞入 10MB 超大字串，幾毫秒內會撞破 K8s 限制
+                            oom_bomb.append("X" * 10 * 1024 * 1024)
 
                     data = None
                     try:
