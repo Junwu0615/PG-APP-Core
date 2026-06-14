@@ -555,20 +555,34 @@ class Application(EntryPoint):
                     if msg is None:
                         continue
 
-                    if msg.value().decode("utf-8") == "TRIGGER_KILL_FROM_KAFKA":
+                    # key = msg.key().decode('utf-8') if msg.key() else 'N/A'
+
+                    _val = msg.value().decode("utf-8")
+                    if _val == "TRIGGER_KILL_FROM_KAFKA":
                         self.logging.error(
                             "收到外部中斷訊號，準備自殺 ...", exc_info=False
                         )
+                        # 提交防止無止盡自殺
+                        self.kcm.commit(asynchronous=False)
+
                         if os.path.exists(self.env["HEARTBEAT_FILE"]):
                             os.remove(self.env["HEARTBEAT_FILE"])
+
                         self.stop_all_services()
 
-                    # key = msg.key().decode('utf-8') if msg.key() else 'N/A'
-                    data = json.loads(msg.value().decode("utf-8"))
+                    data = None
+                    try:
+                        data = json.loads(_val)
+                    except Exception as e:
+                        self.logging.error(
+                            f"[{self.env['_MAIN_NAME']}] 解析失敗 ... 應是源頭傳輸錯誤格式 提交消費以此略過該筆事務",
+                            exc_info=True,
+                        )
+                        self.kcm.commit(asynchronous=False)
+                        continue
 
                     if data.get("mach_name") != self.mach_name:
                         continue  # 同 Partition 鄰居資料直接無視
-
                     try:
                         # self.logging.info(f"[{self.env['_MAIN_NAME']}] 收到來自 {key}: {data}")
 
