@@ -31,14 +31,12 @@ from src.core.models.sink_format import *
 from src.core.models.simulator import MachineStatusSimulator
 
 
-HEARTBEAT_FILE = "./data/heartbeat/heartbeat.txt"
-# HEARTBEAT_FILE = None
-write_heartbeat(HEARTBEAT_FILE, "OK")  # 1. 程式啟動時先建立心跳檔
-
-
 class Application(EntryPoint):
     def __init__(self):
         super().__init__(dotenv_path=f"{" / ".join(__file__.split(" / ")[:-1])}/.env")
+
+        _HEARTBEAT_FILE = os.getenv("HEARTBEAT_FILE", "./data/heartbeat/heartbeat.txt")
+        # _HEARTBEAT_FILE = None
 
         _YAML_VERSION = os.getenv("YAML_VERSION", "v2")
         _CONSUMER_ORDER_TOPIC = os.getenv(
@@ -74,6 +72,7 @@ class Application(EntryPoint):
 
         _MAIN_NAME = f"#{self.mach_name}"
 
+        self.env["HEARTBEAT_FILE"] = _HEARTBEAT_FILE
         self.env["CONSUMER_ORDER_TOPIC"] = _CONSUMER_ORDER_TOPIC
         self.env["CONSUMER_GROUP_ID"] = _CONSUMER_GROUP_ID
         self.env["KAFKA_HOST"] = _KAFKA_HOST
@@ -105,7 +104,7 @@ class Application(EntryPoint):
                 "IS_KUBERNETES": os.getenv("IS_KUBERNETES", "true"),
             },
         )
-
+        write_heartbeat(self.env["HEARTBEAT_FILE"], "OK")  # 1. 程式啟動時先建立心跳檔
         self.configure_setting(logging=logging)  # TODO 完成 EntryPoint 必要後續初始化
         self._load_configs()  # 冗長設定
 
@@ -629,7 +628,7 @@ class Application(EntryPoint):
         )
         while not self._stop_event.is_set():
             try:
-                write_heartbeat("OK")  # 2. 持續建立心跳檔
+                write_heartbeat(self.env["HEARTBEAT_FILE"], "OK")  # 2. 持續建立心跳檔
                 time.sleep(1)
 
             except Exception as e:
