@@ -134,7 +134,7 @@ def clear_fault():
 
 if __name__ == "__main__":
     uvicorn.run(
-        "src.scripts.observational_simulation.api.main:app",
+        "src.scripts.observational_simulation.api:app",
         host="0.0.0.0",
         port=8000,
         reload=True,
