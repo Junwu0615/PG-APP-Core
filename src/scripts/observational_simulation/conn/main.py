@@ -2,10 +2,12 @@ import os
 from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.orm import sessionmaker, declarative_base
 
+
 # 定義 SQLite 資料庫路徑
 # 在 Docker/K8s 中，這通常是一個掛載點，例如 /app/data/orders.db
 DB_DIR = "./data"
 DB_PATH = os.path.join(DB_DIR, "orders.db")
+
 
 # 確保目錄存在
 if not os.path.exists(DB_DIR):

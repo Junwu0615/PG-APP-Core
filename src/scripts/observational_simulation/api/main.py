@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from fastapi import FastAPI, HTTPException, Depends
 from prometheus_fastapi_instrumentator import Instrumentator
 
+
 # --- OpenTelemetry Observability Setup ---
 # 設定 OTel exporter 將 telemetry 發送到本地的 OpenTelemetry Collector
 # ( 假設您在 k8s 中部署了 otel-collector，或者在本地運行 jaeger/tempo )
@@ -13,9 +14,11 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
+
 # 初始化 Tracer Provider
 trace.set_tracer_provider(TracerProvider())
 tracer = trace.get_tracer(__name__)
+
 
 # 設定 OTLP Exporter (指向 Tempo 或 OTEL Collector)
 # 在 K8s 中，這通常是 otel-collector.observability.svc.cluster.local:4317
@@ -24,6 +27,7 @@ span_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
 span_processor = BatchSpanProcessor(span_exporter)
 trace.get_tracer_provider().add_span_processor(span_processor)
 # -------------------------------------------------------
+
 
 # --- SQLite Setup ---
 DB_PATH = os.getenv("DB_PATH", "./data/orders.db")
@@ -141,5 +145,9 @@ def clear_fault():
 
 
 if __name__ == "__main__":
-    # 啟動服務，監聽 8000 埠
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        "src.scripts.observational_simulation.api.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+    )
