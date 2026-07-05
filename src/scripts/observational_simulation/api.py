@@ -1,13 +1,19 @@
-import os, time, sqlite3, uvicorn
-from sqlalchemy import create_engine, Column, Integer, String, Float
-from sqlalchemy.orm import sessionmaker, declarative_base
+import os, time, uvicorn
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from fastapi import FastAPI, HTTPException, Depends
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from table.order import Base, Order
+from utils.normal import init_database
+from utils.constant import (
+    DB_DIR,
+    DB_PATH,
+    DATABASE_URL,
+)
 
-# --- OpenTelemetry Observability Setup ---
+# OpenTelemetry Observability Setup
 # 設定 OTel exporter 將 telemetry 發送到本地的 OpenTelemetry Collector
-# ( 假設您在 k8s 中部署了 otel-collector，或者在本地運行 jaeger/tempo )
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -15,50 +21,32 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 
-# 初始化 Tracer Provider
+# TODO Tracer Provider
 trace.set_tracer_provider(TracerProvider())
 tracer = trace.get_tracer(__name__)
 
-
-# 設定 OTLP Exporter (指向 Tempo 或 OTEL Collector)
-# 在 K8s 中，這通常是 otel-collector.observability.svc.cluster.local:4317
+# TODO OTLP Exporter (指向 Tempo)
 otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
 span_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
 span_processor = BatchSpanProcessor(span_exporter)
 trace.get_tracer_provider().add_span_processor(span_processor)
-# -------------------------------------------------------
 
-
-# --- SQLite Setup ---
-DB_PATH = os.getenv("DB_PATH", "./data/orders.db")
-# 確保數據目錄存在
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-DATABASE_URL = f"sqlite:///{DB_PATH}"
-
-Base = declarative_base()
-
-
-# 定義 Order Model
-class Order(Base):
-    __tablename__ = "orders"
-    id = Column(Integer, primary_key=True, index=True)
-    item_name = Column(String, index=True)
-    amount = Column(Float)
-    customer_id = Column(Integer)
-
+# TODO SQLite Setup
+init_database(DB_DIR, DATABASE_URL)
 
 # 創建資料庫表
 engine = create_engine(DATABASE_URL, connect_args={"timeout": 15})  # 增加連接超時
 Base.metadata.create_all(bind=engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# --- FastAPI App Setup ---
+
+# TODO FastAPI Setup
 app = FastAPI(title="Order Service with Fault Injection")
 
-# **[關鍵埋點]** 自動收集 Prometheus Metrics
+# 自動收集 Prometheus Metrics
 Instrumentator().instrument(app).expose(app)
 
-# **[關鍵埋點]** 自動收集 Distributed Traces
+# 自動收集 Distributed Traces
 FastAPIInstrumentor.instrument_app(app)
 
 
