@@ -1,1 +1,14 @@
+# PG Shared Lib
 git+https://github.com/Junwu0615/PG-Shared-Lib@main
+
+# observational simulation
+fastapi==0.139.0
+uvicorn==0.50.0
+sqlalchemy==2.0.51
+opentelemetry-api==1.43.0
+opentelemetry-sdk==1.43.0
+opentelemetry-exporter-otlp==1.43.0
+opentelemetry-instrumentation-fastapi==0.64b0
+opentelemetry-exporter-prometheus==0.64b0
+
+# security simulation
