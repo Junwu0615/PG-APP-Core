@@ -1,4 +1,7 @@
-import os, time, logging, asyncio, uvicorn
+import json
+import os, time, logging, asyncio, uvicorn, logging_loki
+from rich.console import Console
+from rich.logging import RichHandler
 from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -23,19 +26,35 @@ from utils.constant import DB_DIR, DB_PATH, DATABASE_URL
 
 # TODO [1] Logging：採用 JSON 格式，便於 Loki 解析
 logger = logging.getLogger(__name__)
-logHandler = logging.StreamHandler()
-formatter = jsonlogger.JsonFormatter(
-    "%(asctime)s %(levelname)s %(name)s %(trace_id)s %(span_id)s %(message)s"
-)
-logHandler.setFormatter(formatter)
-logger.addHandler(logHandler)
 logger.setLevel(logging.INFO)
+if logger.hasHandlers():  # 避免重複觸發 logger
+    logger.handlers.clear()
+
+# TODO 設定 RichHandler (僅輸出到 Console，供開發檢視)
+rich_handler = RichHandler(
+    console=Console(),
+    show_time=True,
+    show_path=False,
+    show_level=True,
+    rich_tracebacks=True,
+    markup=True,
+)
+logger.addHandler(rich_handler)  # 將 Rich Handler 加入
+
+# TODO 設定 LokiHandler (僅送往 Loki，供觀測平台解析)
+loki_endpoint = os.getenv("LOKI_ENDPOINT", "http://127.0.0.1:3100")
+loki_handler = logging_loki.LokiHandler(
+    url=f"{loki_endpoint}/loki/api/v1/push",
+    tags={"app": "fastapi-ide", "env": "development"},
+    version="1",
+)
+logger.addHandler(loki_handler)
 LoggingInstrumentor().instrument(set_logging_format=True)
 
 # TODO [2] Tracer & Exporter 初始化
 trace.set_tracer_provider(TracerProvider())
 tracer = trace.get_tracer(__name__)
-otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
 span_processor = BatchSpanProcessor(
     OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
 )
@@ -68,6 +87,7 @@ fault = {"injected": False, "duration": 0}
 
 @app.get("/health")
 async def health_check():
+    logger.info("Health check accessed", extra={"status": "ok", "path": "/health"})
     return {"status": "ok"}
 
 
@@ -88,7 +108,12 @@ async def create_order(
         new_order = Order(item_name=item_name, amount=amount, customer_id=customer_id)
         db.add(new_order)
         db.commit()
+        logger.info(
+            "Orders check accessed",
+            extra={"status": "success", "order_id": new_order.id, "path": "/orders"},
+        )
         return {"status": "success", "order_id": new_order.id}
+
     except Exception as e:
         trace.get_current_span().set_status(Status(StatusCode.ERROR))
         logger.error("Database operation failed", extra={"error": str(e)})
@@ -99,6 +124,10 @@ async def create_order(
 async def inject_fault(duration_seconds: int = 5):
     fault["injected"] = True
     fault["duration"] = duration_seconds
+    logger.info(
+        "Admin/Inject-Fault check accessed",
+        extra={"status": "injected", "path": "/admin/inject-fault"},
+    )
     return {"status": "injected"}
 
 
@@ -107,6 +136,11 @@ async def get_orders(customer_id: int, db=Depends(get_db)):
     if fault["injected"]:
         await asyncio.sleep(fault["duration"])
     with tracer.start_as_current_span("sqlite_select"):
+        ret = db.query(Order).filter(Order.customer_id == customer_id).all()
+        logger.info(
+            f"Orders/{customer_id} check accessed",
+            extra={"path": f"/orders/{customer_id}"},
+        )
         return db.query(Order).filter(Order.customer_id == customer_id).all()
 
 

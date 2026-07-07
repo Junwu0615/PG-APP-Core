@@ -2,9 +2,11 @@
 git+https://github.com/Junwu0615/PG-Shared-Lib@main
 
 # observational simulation
+rich==15.0.0
 fastapi==0.139.0
 uvicorn==0.50.0
 sqlalchemy==2.0.51
+python-logging-loki==0.3.1
 python-json-logger==4.1.0
 opentelemetry-api==1.43.0
 opentelemetry-sdk==1.43.0
