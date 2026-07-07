@@ -1,4 +1,3 @@
-import json
 import os, time, logging, asyncio, uvicorn, logging_loki
 from rich.console import Console
 from rich.logging import RichHandler
@@ -20,38 +19,11 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 
 # 業務邏輯模組
 from table.order import Base, Order
-from utils.normal import init_database
+from utils.normal import init_database, TraceIdAliasFilter
 from utils.constant import DB_DIR, DB_PATH, DATABASE_URL
 
 
-# TODO [1] Logging：採用 JSON 格式，便於 Loki 解析
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-if logger.hasHandlers():  # 避免重複觸發 logger
-    logger.handlers.clear()
-
-# TODO 設定 RichHandler (僅輸出到 Console，供開發檢視)
-rich_handler = RichHandler(
-    console=Console(),
-    show_time=True,
-    show_path=False,
-    show_level=True,
-    rich_tracebacks=True,
-    markup=True,
-)
-logger.addHandler(rich_handler)  # 將 Rich Handler 加入
-
-# TODO 設定 LokiHandler (僅送往 Loki，供觀測平台解析)
-loki_endpoint = os.getenv("LOKI_ENDPOINT", "http://127.0.0.1:3100")
-loki_handler = logging_loki.LokiHandler(
-    url=f"{loki_endpoint}/loki/api/v1/push",
-    tags={"app": "fastapi-ide", "env": "development"},
-    version="1",
-)
-logger.addHandler(loki_handler)
-LoggingInstrumentor().instrument(set_logging_format=True)
-
-# TODO [2] Tracer & Exporter 初始化
+# TODO [1] Tracer & Exporter 初始化
 trace.set_tracer_provider(TracerProvider())
 tracer = trace.get_tracer(__name__)
 otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
@@ -59,6 +31,48 @@ span_processor = BatchSpanProcessor(
     OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
 )
 trace.get_tracer_provider().add_span_processor(span_processor)
+
+
+# TODO LoggingInstrumentor: 讀取 TracerProvider 並正確注入 TraceID
+LoggingInstrumentor().instrument(set_logging_format=True)
+
+
+# TODO [2] Logging：採用 JSON 格式，便於 Loki 解析
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+if logger.hasHandlers():  # 避免重複觸發 logger
+    logger.handlers.clear()
+
+# TODO 設定 RichHandler (僅輸出到 Console，供開發檢視)
+# rich_handler = RichHandler(
+#     console=Console(),
+#     show_time=True,
+#     show_path=False,
+#     show_level=True,
+#     rich_tracebacks=True,
+#     markup=True,
+# )
+# logger.addHandler(rich_handler)  # 將 Rich Handler 加入
+
+# TODO 設定 LokiHandler (僅送往 Loki，供觀測平台解析)
+
+# loki_formatter = jsonlogger.JsonFormatter(
+#     fmt="%(asctime)s %(levelname)s %(name)s %(trace_id)s %(span_id)s %(message)s"
+# ) # 定義 Loki 的 JSON Formatter (不包含顏色代碼)
+
+# 移除硬編碼的 fmt 參數 => 會自動把所有屬性全部包進去
+loki_formatter = jsonlogger.JsonFormatter()
+
+
+loki_endpoint = os.getenv("LOKI_ENDPOINT", "http://127.0.0.1:3100")
+loki_handler = logging_loki.LokiHandler(
+    url=f"{loki_endpoint}/loki/api/v1/push",
+    tags={"app": "fastapi-ide", "env": "development"},
+    version="1",
+)
+loki_handler.setFormatter(loki_formatter)  # 強制指定給 Loki 格式
+logger.addHandler(loki_handler)
+logger.addFilter(TraceIdAliasFilter())
 
 # TODO [3] DB: SQLite 設定
 init_database(DB_DIR, DATABASE_URL)
@@ -81,13 +95,13 @@ def get_db():
         db.close()
 
 
-# 故障注入控制器 (全域變數)
+# 故障注入控制器
 fault = {"injected": False, "duration": 0}
 
 
 @app.get("/health")
 async def health_check():
-    logger.info("Health check accessed", extra={"status": "ok", "path": "/health"})
+    logger.info("Health Check Accessed", extra={"status": "ok", "path": "/health"})
     return {"status": "ok"}
 
 
@@ -109,14 +123,14 @@ async def create_order(
         db.add(new_order)
         db.commit()
         logger.info(
-            "Orders check accessed",
+            "Orders Check Accessed",
             extra={"status": "success", "order_id": new_order.id, "path": "/orders"},
         )
         return {"status": "success", "order_id": new_order.id}
 
     except Exception as e:
         trace.get_current_span().set_status(Status(StatusCode.ERROR))
-        logger.error("Database operation failed", extra={"error": str(e)})
+        logger.error("Database Operation Failed[/bold red]", extra={"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -125,7 +139,7 @@ async def inject_fault(duration_seconds: int = 5):
     fault["injected"] = True
     fault["duration"] = duration_seconds
     logger.info(
-        "Admin/Inject-Fault check accessed",
+        "Admin/Inject-Fault Check Accessed",
         extra={"status": "injected", "path": "/admin/inject-fault"},
     )
     return {"status": "injected"}
@@ -136,9 +150,8 @@ async def get_orders(customer_id: int, db=Depends(get_db)):
     if fault["injected"]:
         await asyncio.sleep(fault["duration"])
     with tracer.start_as_current_span("sqlite_select"):
-        ret = db.query(Order).filter(Order.customer_id == customer_id).all()
         logger.info(
-            f"Orders/{customer_id} check accessed",
+            f"Orders/{customer_id} Check Accessed",
             extra={"path": f"/orders/{customer_id}"},
         )
         return db.query(Order).filter(Order.customer_id == customer_id).all()

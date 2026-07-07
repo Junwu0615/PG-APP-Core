@@ -1,4 +1,16 @@
-import os
+import os, logging
+
+
+class TraceIdAliasFilter(logging.Filter):
+    def filter(self, record):
+        """
+        TODO 若存在 otelTraceID，則複製一份給 trace_id
+        """
+        if hasattr(record, "otelTraceID"):
+            record.trace_id = record.otelTraceID
+        if hasattr(record, "otelSpanID"):
+            record.span_id = record.otelSpanID
+        return True
 
 
 def init_database(db_dir: str, database_url: str):
