@@ -11,9 +11,12 @@ if [ $? -eq 0 ]; then echo "✅  Prometheus [9090]: Online"; else echo "❌  Pro
 curl -s http://localhost:3100/loki/api/v1/status/buildinfo > /dev/null
 if [ $? -eq 0 ]; then echo "✅  Loki [3100]: Online"; else echo "❌  Loki [3100]: Offline"; fi
 
-# 3. 檢查 Tempo (gRPC 埠口探測)
-nc -z localhost 4317 > /dev/null
-if [ $? -eq 0 ]; then echo "✅  Tempo [4317]: Online"; else echo "❌  Tempo [4317]: Offline"; fi
+# 3. Tempo (檢查 UI)
+curl -s http://localhost:3100/status > /dev/null && echo "✅ Tempo UI [3100]: Online" || echo "❌ Tempo UI [3100]: Offline"
+
+# 4. Tempo (檢查 gRPC 接收埠 => Python 發送資料位置)
+nc -z localhost 4317 > /dev/null && echo "✅ Tempo OTLP [4317]: Online" || echo "❌ Tempo OTLP [4317]: Offline"
+
 
 echo ""
 echo "========== 檢查完畢 =========="
