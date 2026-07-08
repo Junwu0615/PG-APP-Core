@@ -13,8 +13,9 @@ from opentelemetry.trace import Status, StatusCode
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 # 業務邏輯模組
@@ -24,14 +25,19 @@ from utils.constant import DB_DIR, DB_PATH, DATABASE_URL
 
 
 # TODO [1] Tracer & Exporter 初始化
-trace.set_tracer_provider(TracerProvider())
+resource = Resource(attributes={"service.name": "order-service"})
+provider = TracerProvider(resource=resource)
+trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
-otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
-span_processor = BatchSpanProcessor(
+
+otlp_endpoint = os.getenv("OTLP_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
+
+# OTLP Exporter (發往 Tempo/Collector)
+otlp_processor = BatchSpanProcessor(
     OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
 )
-trace.get_tracer_provider().add_span_processor(span_processor)
-
+provider.add_span_processor(otlp_processor)
+provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
 
 # TODO LoggingInstrumentor: 讀取 TracerProvider 並正確注入 TraceID
 LoggingInstrumentor().instrument(set_logging_format=True)
@@ -97,6 +103,9 @@ def get_db():
 
 # 故障注入控制器
 fault = {"injected": False, "duration": 0}
+
+with tracer.start_as_current_span("test-span"):
+    logger.info("Trace generated!")
 
 
 @app.get("/health")
