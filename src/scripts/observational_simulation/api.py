@@ -172,6 +172,7 @@ class UnifiedLoggingMiddleware(BaseHTTPMiddleware):
         finally:
             if request.url.path not in excluded_paths:
                 process_time = (time.perf_counter() - start_time) * 1000
+
                 msg = getattr(
                     request.state, "log_msg", "API Request Accessed"
                 )  # 取得訊息
@@ -185,6 +186,10 @@ class UnifiedLoggingMiddleware(BaseHTTPMiddleware):
                         request.state, "error_msg", "Unknown Error"
                     )
 
+                # TODO 監控延遲狀況
+                if process_time > 200:  # 設定門檻值
+                    extra_data["latency_alert"] = "high"
+
                 # 統一輸出
                 log_func = getattr(logger, level_name.lower(), logger.info)
                 extra_data.update(
@@ -193,6 +198,7 @@ class UnifiedLoggingMiddleware(BaseHTTPMiddleware):
                         "path": request.url.path,
                         "status": status_code,
                         "duration_ms": f"{process_time:.2f}",
+                        "injected": fault["injected"],
                     }
                 )
                 log_func(msg, extra=extra_data)
@@ -239,10 +245,12 @@ async def create_order(
 ):
     # 注入故障 (非阻塞)
     if fault["injected"]:
-        logger.warning(
-            "⚠️ Fault Injected: Delaying I/O", extra={"delay": fault["duration"]}
-        )
-        await asyncio.sleep(fault["duration"])
+        with tracer.start_as_current_span("fault_injection_delay") as span:
+            # logger.warning(
+            #     "⚠️ Fault Injected: Delaying I/O", extra={"delay": fault["duration"]}
+            # )
+            span.set_attribute("delay.duration", fault["duration"])
+            await asyncio.sleep(fault["duration"])
 
     try:
         new_order = Order(item_name=item_name, amount=amount, customer_id=customer_id)
@@ -288,10 +296,12 @@ async def inject_fault(request: Request, duration_seconds: int = 5):
 @app.get("/orders/{customer_id}")
 async def get_orders(request: Request, customer_id: int, db=Depends(get_db)):
     if fault["injected"]:
-        logger.warning(
-            "⚠️ Fault Injected: Delaying I/O", extra={"delay": fault["duration"]}
-        )
-        await asyncio.sleep(fault["duration"])
+        with tracer.start_as_current_span("fault_injection_delay") as span:
+            # logger.warning(
+            #     "⚠️ Fault Injected: Delaying I/O", extra={"delay": fault["duration"]}
+            # )
+            span.set_attribute("delay.duration", fault["duration"])
+            await asyncio.sleep(fault["duration"])
 
     request.state.log_msg = f"Orders/{customer_id}"
     request.state.log_level = "info"
