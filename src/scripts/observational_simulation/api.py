@@ -153,33 +153,45 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 class UnifiedLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         start_time = time.perf_counter()
+        status_code = 500  # 預設狀態
+        try:
+            # 排除不需要記錄的路徑
+            if request.url.path in ["/metrics"]:
+                # if request.url.path in ["/health", "/metrics"]:
+                status_code = 200
+                return await call_next(request)
 
-        # 排除掉不需要記錄的頻繁路徑
-        if request.url.path in ["/metrics"]:
-            # if request.url.path in ["/health", "/metrics"]:
-            return await call_next(request)
+            response = await call_next(request)
+            status_code = response.status_code
 
-        response = await call_next(request)
-        process_time = (time.perf_counter() - start_time) * 1000
+        except Exception as e:
+            status_code = 500
+            request.state.error_msg = str(e)  # 將錯誤存入 state 供 logger 使用
+            raise e  # 繼續拋出，讓 FastAPI 處理 Response
 
-        # TODO 防呆機制
-        # 取得自定義訊息，如果 API 沒設，給予預設值
-        msg = getattr(request.state, "log_msg", "API Request Processed")
+        finally:
+            process_time = (time.perf_counter() - start_time) * 1000
+            msg = getattr(request.state, "log_msg", "API Request Accessed")  # 取得訊息
+            extra_data = getattr(request.state, "extra_data", {})  # 取得 extra_data
+            level_name = getattr(request.state, "log_level", "info")  # 取得層級
 
-        # 取得層級
-        level_name = getattr(request.state, "log_level", "info")
+            # 如果有捕捉到異常，強制提升層級為 error
+            if hasattr(request.state, "error_msg"):
+                level_name = "error"
+                extra_data["error"] = request.state.error_msg
 
-        # 輸出日誌(統一入口)
-        log_func = getattr(logger, level_name.lower(), logger.info)
-        log_func(
-            msg,
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "status": response.status_code,
-                "duration_ms": f"{process_time:.2f}",
-            },
-        )
+            # 統一輸出
+            log_func = getattr(logger, level_name.lower(), logger.info)
+            extra_data.update(
+                {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": status_code,
+                    "duration_ms": f"{process_time:.2f}",
+                }
+            )
+            log_func(msg, extra=extra_data)
+
         return response
 
 
@@ -201,14 +213,11 @@ def get_db():
 # 故障注入控制器
 fault = {"injected": False, "duration": 0}
 
-# with tracer.start_as_current_span("test-span"):
-#     logger.info("Trace generated!")
-
 
 @app.get("/health")
 async def health_check(request: Request):
     request.state.log_level = "info"
-    request.state.log_msg = "Health => Check Accessed"
+    request.state.log_msg = "Health"
     return {
         "status": "ok",
         "path": "/health",
@@ -223,8 +232,6 @@ async def create_order(
     customer_id: int,
     db=Depends(get_db),
 ):
-    start_time = time.perf_counter()  # 記錄開始時間
-
     # 注入故障 (非阻塞)
     if fault["injected"]:
         logger.warning(
@@ -237,30 +244,15 @@ async def create_order(
         db.add(new_order)
         db.commit()
 
-        duration_ms = (time.perf_counter() - start_time) * 1000  # 計算耗時
-
-        # logger.info(
-        #     "Orders => Check Accessed",
-        #     extra={
-        #         "status": "success",
-        #         "order_id": new_order.id,
-        #         "path": "/orders",
-        #         "duration_ms": round(duration_ms, 2),  # 延遲注入
-        #     },
-        # )
         request.state.log_level = "info"
-        request.state.log_msg = "Orders => Check Accessed"
+        request.state.log_msg = f"Orders: {new_order.id}"
         return {
             "status": "success",
-            "order_id": new_order.id,
             "path": "/orders",
-            "duration_ms": round(duration_ms, 2),
         }
 
     except Exception as e:
         trace.get_current_span().set_status(Status(StatusCode.ERROR))
-        # FIXME
-        logger.error("Database Operation Failed[/bold red]", extra={"error": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -268,12 +260,8 @@ async def create_order(
 async def remove_inject(request: Request):
     fault["injected"] = False
     fault["duration"] = 0
-    # logger.info(
-    #     "Admin/Remove-Inject => Check Accessed",
-    #     extra={"status": "remove-inject", "path": "/admin/remove-inject"},
-    # )
     request.state.log_level = "info"
-    request.state.log_msg = "Admin/Remove-Inject => Check Accessed"
+    request.state.log_msg = "Admin/Remove-Inject"
     return {
         "status": "remove-inject",
         "path": "/admin/remove-inject",
@@ -284,12 +272,8 @@ async def remove_inject(request: Request):
 async def inject_fault(request: Request, duration_seconds: int = 5):
     fault["injected"] = True
     fault["duration"] = duration_seconds
-    # logger.info(
-    #     "Admin/Inject-Fault => Check Accessed",
-    #     extra={"status": "inject-fault", "path": "/admin/inject-fault"},
-    # )
     request.state.log_level = "info"
-    request.state.log_msg = "Admin/Inject-Fault => Check Accessed"
+    request.state.log_msg = "Admin/Inject-Fault"
     return {
         "status": "inject-fault",
         "path": "/admin/inject-fault",
@@ -304,17 +288,13 @@ async def get_orders(request: Request, customer_id: int, db=Depends(get_db)):
         )
         await asyncio.sleep(fault["duration"])
 
+    request.state.log_msg = f"Orders/{customer_id}"
+    request.state.log_level = "info"
+    request.state.extra_data = {
+        "status": "success",
+        "path": f"/orders/{customer_id}",
+    }
     with tracer.start_as_current_span("sqlite_select"):
-        logger.info(
-            f"Orders/{customer_id} => Check Accessed",
-            extra={
-                "level_name": "info",
-                "status": "success",
-                "order_id": customer_id,
-                "path": f"/orders/{customer_id}",
-            },
-        )
-        # FIXME
         return db.query(Order).filter(Order.customer_id == customer_id).all()
 
 
