@@ -152,45 +152,50 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # TODO [4] FastAPI 初始化
 class UnifiedLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
+        # 定義排除清單
+        # excluded_paths = ["/metrics", "/health"]
+        excluded_paths = ["/metrics"]
+
         start_time = time.perf_counter()
         status_code = 500  # 預設狀態
+        error_occurred = False
         try:
-            # 排除不需要記錄的路徑
-            if request.url.path in ["/metrics"]:
-                # if request.url.path in ["/health", "/metrics"]:
-                status_code = 200
-                return await call_next(request)
-
             response = await call_next(request)
             status_code = response.status_code
 
         except Exception as e:
             status_code = 500
             request.state.error_msg = str(e)  # 將錯誤存入 state 供 logger 使用
-            raise e  # 繼續拋出，讓 FastAPI 處理 Response
+            error_occurred = True
+            raise e
 
         finally:
-            process_time = (time.perf_counter() - start_time) * 1000
-            msg = getattr(request.state, "log_msg", "API Request Accessed")  # 取得訊息
-            extra_data = getattr(request.state, "extra_data", {})  # 取得 extra_data
-            level_name = getattr(request.state, "log_level", "info")  # 取得層級
+            if request.url.path not in excluded_paths:
+                process_time = (time.perf_counter() - start_time) * 1000
+                msg = getattr(
+                    request.state, "log_msg", "API Request Accessed"
+                )  # 取得訊息
+                extra_data = getattr(request.state, "extra_data", {})  # 取得 extra_data
+                level_name = getattr(request.state, "log_level", "info")  # 取得層級
 
-            # 如果有捕捉到異常，強制提升層級為 error
-            if hasattr(request.state, "error_msg"):
-                level_name = "error"
-                extra_data["error"] = request.state.error_msg
+                # 如果有捕捉到異常，強制提升層級為 error
+                if error_occurred or hasattr(request.state, "error_msg"):
+                    level_name = "error"
+                    extra_data["error"] = getattr(
+                        request.state, "error_msg", "Unknown Error"
+                    )
 
-            # 統一輸出
-            log_func = getattr(logger, level_name.lower(), logger.info)
-            extra_data.update(
-                {
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status": status_code,
-                    "duration_ms": f"{process_time:.2f}",
-                }
-            )
-            log_func(msg, extra=extra_data)
+                # 統一輸出
+                log_func = getattr(logger, level_name.lower(), logger.info)
+                extra_data.update(
+                    {
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status": status_code,
+                        "duration_ms": f"{process_time:.2f}",
+                    }
+                )
+                log_func(msg, extra=extra_data)
 
         return response
 
