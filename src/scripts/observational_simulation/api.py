@@ -37,7 +37,7 @@ otlp_processor = BatchSpanProcessor(
     OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
 )
 provider.add_span_processor(otlp_processor)
-provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+# provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter())) # 每次 Span 產生時，終端機會吐出一堆追蹤數據
 
 # TODO LoggingInstrumentor: 讀取 TracerProvider 並正確注入 TraceID
 LoggingInstrumentor().instrument(set_logging_format=True)
@@ -46,6 +46,7 @@ LoggingInstrumentor().instrument(set_logging_format=True)
 # TODO [2] Logging：採用 JSON 格式，便於 Loki 解析
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+# logger.setLevel(logging.WARNING)
 if logger.hasHandlers():  # 避免重複觸發 logger
     logger.handlers.clear()
 
@@ -110,7 +111,7 @@ with tracer.start_as_current_span("test-span"):
 
 @app.get("/health")
 async def health_check():
-    logger.info("Health Check Accessed", extra={"status": "ok", "path": "/health"})
+    logger.info("Health => Check Accessed", extra={"status": "ok", "path": "/health"})
     return {"status": "ok"}
 
 
@@ -118,6 +119,8 @@ async def health_check():
 async def create_order(
     item_name: str, amount: float, customer_id: int, db=Depends(get_db)
 ):
+    start_time = time.perf_counter()  # 記錄開始時間
+
     # 注入故障 (非阻塞)
     if fault["injected"]:
         logger.warning(
@@ -125,15 +128,21 @@ async def create_order(
         )
         await asyncio.sleep(fault["duration"])
 
-    # with tracer.start_as_current_span("sqlite_insert") as span:
     try:
-        # span.set_attribute("db.statement", "INSERT INTO orders ...")
         new_order = Order(item_name=item_name, amount=amount, customer_id=customer_id)
         db.add(new_order)
         db.commit()
+
+        duration_ms = (time.perf_counter() - start_time) * 1000  # 計算耗時
+
         logger.info(
-            "Orders Check Accessed",
-            extra={"status": "success", "order_id": new_order.id, "path": "/orders"},
+            "Orders => Check Accessed",
+            extra={
+                "status": "success",
+                "order_id": new_order.id,
+                "path": "/orders",
+                "duration_ms": round(duration_ms, 2),  # 延遲注入
+            },
         )
         return {"status": "success", "order_id": new_order.id}
 
@@ -143,25 +152,44 @@ async def create_order(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/admin/remove-inject")
+async def remove_inject():
+    fault["injected"] = False
+    fault["duration"] = 0
+    logger.info(
+        "Admin/Remove-Inject => Check Accessed",
+        extra={"status": "remove-inject", "path": "/admin/remove-inject"},
+    )
+    return {"status": "remove-inject"}
+
+
 @app.post("/admin/inject-fault")
 async def inject_fault(duration_seconds: int = 5):
     fault["injected"] = True
     fault["duration"] = duration_seconds
     logger.info(
-        "Admin/Inject-Fault Check Accessed",
-        extra={"status": "injected", "path": "/admin/inject-fault"},
+        "Admin/Inject-Fault => Check Accessed",
+        extra={"status": "inject-fault", "path": "/admin/inject-fault"},
     )
-    return {"status": "injected"}
+    return {"status": "inject-fault"}
 
 
 @app.get("/orders/{customer_id}")
 async def get_orders(customer_id: int, db=Depends(get_db)):
     if fault["injected"]:
+        logger.warning(
+            "⚠️ Fault Injected: Delaying I/O", extra={"delay": fault["duration"]}
+        )
         await asyncio.sleep(fault["duration"])
+
     with tracer.start_as_current_span("sqlite_select"):
         logger.info(
-            f"Orders/{customer_id} Check Accessed",
-            extra={"path": f"/orders/{customer_id}"},
+            f"Orders/{customer_id} => Check Accessed",
+            extra={
+                "status": "success",
+                "order_id": customer_id,
+                "path": f"/orders/{customer_id}",
+            },
         )
         return db.query(Order).filter(Order.customer_id == customer_id).all()
 
