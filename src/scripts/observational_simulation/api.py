@@ -51,6 +51,7 @@ uvicorn_error = logging.getLogger("uvicorn.error")
 uvicorn_error.handlers = []  # 清空處理器
 uvicorn_error.propagate = False  # 禁止傳遞到 Root Logger
 
+
 # TODO [2] Logging：採用 JSON 格式，便於 Loki 解析
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -142,6 +143,7 @@ loki_handler.setLevel(logging.INFO)  # 層級設高
 logger.addHandler(loki_handler)
 logger.addFilter(TraceIdAliasFilter())
 
+
 # TODO [3] DB: SQLite 設定
 init_database(DB_DIR, DATABASE_URL)
 engine = create_engine(DATABASE_URL, connect_args={"timeout": 15})
@@ -178,8 +180,10 @@ class UnifiedLoggingMiddleware(BaseHTTPMiddleware):
                 )  # 取得訊息
                 extra_data = getattr(request.state, "extra_data", {})  # 取得 extra_data
                 level_name = getattr(request.state, "log_level", "info")  # 取得層級
+                method = request.method
+                url_path = request.url.path
 
-                # 如果有捕捉到異常，強制提升層級為 error
+                # 如有捕捉到異常，強制提升層級為 error
                 if error_occurred or hasattr(request.state, "error_msg"):
                     level_name = "error"
                     extra_data["error"] = getattr(
@@ -190,15 +194,18 @@ class UnifiedLoggingMiddleware(BaseHTTPMiddleware):
                 if process_time > 200:  # 設定門檻值
                     extra_data["latency_alert"] = "high"
 
+                injected_status = getattr(globals(), "fault", {}).get("injected", False)
+                injected_status = "True" if injected_status else "False"
+                url_path += f"?injected={injected_status}"
+
                 # 統一輸出
                 log_func = getattr(logger, level_name.lower(), logger.info)
                 extra_data.update(
                     {
-                        "method": request.method,
-                        "path": request.url.path,
+                        "method": method,
+                        "path": url_path,
                         "status": status_code,
                         "duration_ms": f"{process_time:.2f}",
-                        "injected": fault["injected"],
                     }
                 )
                 log_func(msg, extra=extra_data)
