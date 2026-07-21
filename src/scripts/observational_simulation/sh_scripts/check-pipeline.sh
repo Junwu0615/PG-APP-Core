@@ -14,7 +14,7 @@ if [ $? -eq 0 ]; then echo "✅  Loki [3100]: Online"; else echo "❌  Loki [310
 # 3. Tempo (檢查 UI)
 curl -s http://localhost:3100/status > /dev/null && echo "✅ Tempo UI [3100]: Online" || echo "❌ Tempo UI [3100]: Offline"
 
-# 4. Tempo (檢查 gRPC 接收埠 => Python 發送資料位置)
+# 4. Tempo (檢查 gRPC 接收埠 → Python 發送資料位置)
 nc -z localhost 4317 > /dev/null && echo "✅ Tempo OTLP [4317]: Online" || echo "❌ Tempo OTLP [4317]: Offline"
 
 

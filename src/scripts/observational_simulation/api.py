@@ -63,7 +63,7 @@ if logger.hasHandlers():  # 避免重複觸發 logger
 
 # TODO 開發專用: 設定 RichHandler (僅輸出到 Console)
 class ConsoleDataFormatter(logging.Formatter):
-    # 定義標準屬性清單 (logging 內建) => 不顯示
+    # 定義標準屬性清單 (logging 內建) → 不顯示
     STANDARD_ATTRS = {
         "name",
         "msg",
@@ -131,7 +131,7 @@ logger.addHandler(rich_handler)  # 將 Rich Handler 加入
 # TODO 觀測專用: 設定 LokiHandler (僅送往 Loki，供觀測平台解析)
 loki_formatter = (
     jsonlogger.JsonFormatter()
-)  # 移除硬編碼的 fmt 參數 => 會自動把所有屬性全部包進去
+)  # 移除硬編碼的 fmt 參數 → 會自動把所有屬性全部包進去
 loki_endpoint = os.getenv("LOKI_ENDPOINT", "http://127.0.0.1:3100")
 loki_handler = logging_loki.LokiHandler(
     url=f"{loki_endpoint}/loki/api/v1/push",
