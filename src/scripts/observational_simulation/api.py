@@ -25,6 +25,7 @@ from utils.normal import init_database, TraceIdAliasFilter
 from utils.constant import DB_DIR, DB_PATH, DATABASE_URL
 from logging_test import ConsoleDataFormatter
 
+
 # TODO [1] Tracer & Exporter 初始化
 resource = Resource(attributes={"service.name": "order-service"})
 provider = TracerProvider(resource=resource)
@@ -59,7 +60,6 @@ logger.handlers = []  # TODO 移除 Uvicorn 預設 handler
 logger.propagate = False  # TODO 不 log 冒泡到 root logger，避免重複輸出
 if logger.hasHandlers():  # 避免重複觸發 logger
     logger.handlers.clear()
-
 
 console = Console(
     force_terminal=True,  # 強制開啟終端機模式 (即使不是互動式環境)
