@@ -1,8 +1,16 @@
-import time, logging, psycopg2
+import sys, time, logging, psycopg2
 from rich.theme import Theme
 from rich.console import Console
 from rich.logging import RichHandler
+from utils.normal import find_project_root
+
+
+# 自動取得專案根目錄 + 將專案根目錄動態加入系統路徑
+PROJECT_ROOT = find_project_root()
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 from src.scripts.observational_simulation.logging_test import ConsoleDataFormatter
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
