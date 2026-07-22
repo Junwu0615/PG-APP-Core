@@ -2,23 +2,33 @@ import time, logging, requests, psycopg2
 from rich.theme import Theme
 from rich.console import Console
 from rich.logging import RichHandler
+from src.scripts.observational_simulation.logging_test import ConsoleDataFormatter
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 if logger.hasHandlers():  # 避免重複觸發 logger
     logger.handlers.clear()
 
-# TODO 設定 RichHandler (僅輸出到 Console，供開發檢視)
+console = Console(
+    force_terminal=True,  # 強制開啟終端機模式 (即使不是互動式環境)
+    # force_interactive=True,   # 強制開啟互動模式
+    color_system="truecolor",  # 強制開啟 24-bit 顏色支援
+    width=300,  # 設定寬度，避免太早換行
+)
 rich_handler = RichHandler(
-    console=Console(),
+    console=console,
     show_time=True,
     show_path=False,
     show_level=True,
     rich_tracebacks=True,
     markup=False,
 )
+console_formatter = ConsoleDataFormatter(
+    fmt="%(message)s", datefmt="[%Y-%m-%d %H:%M:%S]"
+)
+rich_handler.setFormatter(console_formatter)
+rich_handler.setLevel(logging.DEBUG)  # 開發細節
 logger.addHandler(rich_handler)  # 將 Rich Handler 加入
-
 
 VAULT_ADDR = "http://127.0.0.1:8200"
 VAULT_TOKEN = "S0lCbeweu9mm7++U5IXaHp8b1qbIhwQXCGhJmQenwXE="

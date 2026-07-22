@@ -23,7 +23,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from table.order import Base, Order
 from utils.normal import init_database, TraceIdAliasFilter
 from utils.constant import DB_DIR, DB_PATH, DATABASE_URL
-
+from logging_test import ConsoleDataFormatter
 
 # TODO [1] Tracer & Exporter 初始化
 resource = Resource(attributes={"service.name": "order-service"})
@@ -59,51 +59,6 @@ logger.handlers = []  # TODO 移除 Uvicorn 預設 handler
 logger.propagate = False  # TODO 不 log 冒泡到 root logger，避免重複輸出
 if logger.hasHandlers():  # 避免重複觸發 logger
     logger.handlers.clear()
-
-
-# TODO 開發專用: 設定 RichHandler (僅輸出到 Console)
-class ConsoleDataFormatter(logging.Formatter):
-    # 定義標準屬性清單 (logging 內建) → 不顯示
-    STANDARD_ATTRS = {
-        "name",
-        "msg",
-        "args",
-        "levelname",
-        "levelno",
-        "pathname",
-        "filename",
-        "module",
-        "exc_info",
-        "exc_text",
-        "stack_info",
-        "lineno",
-        "funcName",
-        "created",
-        "msecs",
-        "relativeCreated",
-        "thread",
-        "threadName",
-        "processName",
-        "process",
-        "taskName",
-        "otelSpanID",
-        "otelTraceID",
-        "otelTraceSampled",
-        "otelServiceName",
-        "span_id",
-        "message",
-        # 'trace_id',
-    }
-
-    def format(self, record):
-        msg = super().format(record)  # 取得主訊息
-        extra = {
-            k: v for k, v in record.__dict__.items() if k not in self.STANDARD_ATTRS
-        }  # 取出「不在」標準屬性清單中的鍵值
-        if extra:  # 統一處理顯示
-            data_str = " | ".join([f"[dim]{k}={v}[/]" for k, v in extra.items()])
-            return f"{msg} [dim][{data_str}][/]"
-        return msg
 
 
 console = Console(
