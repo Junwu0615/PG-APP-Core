@@ -18,11 +18,6 @@ tree -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data|charts'
 ├── .pre-commit-config.yaml
 ├── LICENSE
 ├── README.md
-├── ci-scripts
-│   ├── cp
-│   │   └── .gitlab-ci.yml
-│   └── inst
-│       └── .gitlab-ci.yml
 ├── requirements.txt
 ├── src
 │   ├── __init__.py
@@ -58,6 +53,33 @@ tree -I 'venv|.git|__pycache__|docs|logs|assets|kafka_data|charts'
 │       ├── generic_benchmark
 │       │   ├── dashboard_benchmark.sql
 │       │   └── olap_benchmark.sql
+│       ├── observational_simulation
+│       │   ├── Makefile
+│       │   ├── api.py
+│       │   ├── conn.py
+│       │   ├── logging_test.py
+│       │   ├── sh_scripts
+│       │   │   ├── check-pipeline.sh
+│       │   │   ├── load-test.sh
+│       │   │   └── port-forward.sh
+│       │   ├── table
+│       │   │   ├── __init__.py
+│       │   │   └── order.py
+│       │   └── utils
+│       │       ├── __init__.py
+│       │       ├── constant.py
+│       │       └── normal.py
+│       ├── security_simulation
+│       │   ├── Makefile
+│       │   ├── monitor_roles.py
+│       │   ├── request_secret.py
+│       │   ├── sh_scripts
+│       │   │   ├── check-pipeline.sh
+│       │   │   └── port-forward.sh
+│       │   └── utils
+│       │       ├── __init__.py
+│       │       ├── constant.py
+│       │       └── normal.py
 │       └── sql
 │           ├── auto_partition.py
 │           ├── delete_data.py
